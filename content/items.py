@@ -159,6 +159,7 @@ def canteen_on_drink(world):
         bump_stat(world, "morale", 5)
         bump_stat(world, "suspicion", 8)    # drinking the XO's stash on duty
         bump_stat(world, "exhaustion", -5)
+        world.flags["tigh_drink_count"] = world.flags.get("tigh_drink_count", 0) + 1
         return (
             "You unscrew the cap. The fumes alone make your eyes water and your career "
             "flash before them. You take a sip anyway, because you have made it this "
@@ -305,10 +306,12 @@ register_item(Item(
 
 def _stash_swig(world):
     """Shared swig handler for any of the three stash bottles. The reward swig:
-    +morale, +exhaustion, marginally suspicious."""
+    +morale, +exhaustion, marginally suspicious. Counts toward the Lahey-coded
+    achievement (drinking with Tigh, broadly construed)."""
     bump_stat(world, "morale", 6)
     bump_stat(world, "exhaustion", 6)
     bump_stat(world, "suspicion", 2)
+    world.flags["tigh_drink_count"] = world.flags.get("tigh_drink_count", 0) + 1
     return (
         "You unscrew the cap. It hisses. You take a sip. It is — gods. It is.\n\n"
         "Your eyes water. Your throat learns something new about itself. The\n"

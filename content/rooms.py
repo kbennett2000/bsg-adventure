@@ -42,7 +42,10 @@ register_room(Room(
         "stands sentry by your rack. On the small fold-down table beside the bunk, a "
         "half-eaten algae bar waits with the patience of something that has nowhere "
         "else to be. There is a service hatch in the deck plate behind the pipes that "
-        "you have, professionally, ignored for two years."
+        "you have, professionally, ignored for two years. Taped to the underside of the "
+        "fold-down table — you discovered this three weeks ago and have not yet processed "
+        "it — is a single playing card. The eight of swords. Nobody has admitted to "
+        "putting it there. The card has not moved."
     ),
     exits={"east": "corridor_c12", "out": "corridor_c12"},
     hidden_exits={
@@ -140,7 +143,10 @@ register_room(Room(
         "doing grey jobs. Pipes overhead, deck plates underfoot, melodrama in both "
         "directions. The sign on the bulkhead reads DECK 5 — ENVIRONMENTAL, with an "
         "arrow pointing toward the head and a smaller, hand-scrawled note underneath "
-        "that says 'AT YOUR OWN FRAKKIN' RISK.'"
+        "that says 'AT YOUR OWN FRAKKIN' RISK.' Beneath the sign, someone has scratched "
+        "HELO + SHARON = ?? into the paint. Beneath THAT, in a different hand, the "
+        "SHARON has been struck through and replaced with YEARS OF QUESTIONS, which "
+        "has, in a third hand, been underlined."
     ),
     exits={
         "west": "env_control",
@@ -247,7 +253,10 @@ register_room(Room(
         "light above the mirror buzzes like a dying wasp. There is a sign above the "
         "sinks that says 'WASH YOUR FRAKKIN' HANDS' in three languages, two of them "
         "rude. The middle stall door is closed. The other two are open and "
-        "unenthusiastic about it."
+        "unenthusiastic about it. The soap dispenser, on close inspection, contains "
+        "hand sanitizer. The hand sanitizer, on closer inspection, contains ambrosia. "
+        "Somebody — you note carefully not to ask — has been thinking about this for "
+        "a long time."
     ),
     exits={
         "west": "corridor_c12",
@@ -332,7 +341,10 @@ register_room(Room(
         "benches. Long metal silence punctuated by short, urgent gossip. The lunch "
         "special is, as always, lasagna. The lasagna is, as always, algae. A pilot "
         "is sobbing into their tray in the corner. They will be dead by act three. "
-        "You do not have time for this. You take a tray anyway."
+        "You do not have time for this. You take a tray anyway. Above the trash chute, "
+        "a small handwritten sign reads 'IF THE CHUTE GROWLS BACK, DO NOT FEED IT.' "
+        "Below it, in a different hand: 'AGREED — HADRIAN.' Below THAT, in a third "
+        "hand: 'too late.'"
     ),
     exits={
         "south": "corridor_c12",
@@ -428,7 +440,10 @@ register_room(Room(
         "sixties decided was a good idea. There's a Viper-shaped scuff mark at "
         "shoulder height that you choose not to ask about. A drinking fountain "
         "gurgles ominously. The lighting flickers in a way that suggests "
-        "personality."
+        "personality. A small stenciled notice next to the fountain reads 'DEEP "
+        "CLEAN: 178 DAYS AGO.' The number was 178 when you started this job. The "
+        "number was 178 last week. The number, you suspect, is afraid to be any "
+        "other number."
     ),
     exits={
         "south": "mess_hall",
@@ -481,7 +496,10 @@ register_room(Room(
         "for reasons that are nostalgic in the best case. Posters of vipers from "
         "the LAST war. Lockers with names you don't recognize because the names "
         "change every patrol. The whole room smells like aviation fuel, cigar smoke, "
-        "and unresolved feelings."
+        "and unresolved feelings. Pinned above the lockers is a hand-drawn relationship "
+        "chart of every pilot on the duty roster, with arrows in four different "
+        "colors. There are too many arrows. The color code is taped beside the chart "
+        "and is, in itself, ALSO an arrow."
     ),
     exits={
         "west": "corridor_b",
@@ -550,7 +568,10 @@ register_room(Room(
         "appears to be the most important piece of furniture in the room despite "
         "being, as far as you can tell, empty. The lab smells of ozone, expensive "
         "cologne, and the specific flop sweat of a man who is in over his head "
-        "and knows it but is determined not to show it."
+        "and knows it but is determined not to show it. On the workbench, a coffee "
+        "mug bears the legend WORLD'S #1 GAIUS in Baltar's own handwriting. The mug "
+        "was, by all available evidence, purchased by Baltar, for Baltar, in a "
+        "ceremony attended exclusively by Baltar."
     ),
     exits={
         "east": "corridor_b",
@@ -653,7 +674,10 @@ register_room(Room(
         "shouting, part the specific ozone of capital weapons being run through "
         "diagnostic. A LSO is shouting at someone with a clipboard. Someone with "
         "a clipboard is shouting back. Several wrenches are being thrown. None of "
-        "them hit anything. Nobody seems surprised."
+        "them hit anything. Nobody seems surprised. Spray-painted on a deck plate "
+        "near the back wall, in letters the size of a person: IF YOU CAN READ THIS "
+        "YOU ARE EITHER A DECKHAND OR HAVE BEEN ON SHIFT TOO LONG. Both apply, "
+        "currently, to you."
     ),
     exits={
         "south": "corridor_b",
@@ -709,7 +733,10 @@ register_room(Room(
         "The lighting is warm enough that you suspect mood. There are framed photos "
         "on the bulkhead — battlestars of yesteryear, pilots of yesteryear, the "
         "Quorum of yesteryear. You feel watched by yesteryear. A coffee station in "
-        "the corner is gently judging your rank."
+        "the corner is gently judging your rank. Beside the coffee station, mounted "
+        "on the bulkhead, is a small brass plaque: 'OFFICER COUNTRY — SPECIALISTS "
+        "WELCOME BY APPOINTMENT.' No appointments have been made, by anyone, ever. "
+        "The plaque has, however, been polished."
     ),
     exits={
         "down": "corridor_b",
@@ -766,7 +793,10 @@ register_room(Room(
         "His scrubs are blue. His teeth are not. The room smells of antiseptic, "
         "cigar smoke, and the specific copper of a slow afternoon turning into a "
         "fast evening. President Roslin is in a chair near the back, reading the "
-        "same page of a religious text she has been reading for fifteen minutes."
+        "same page of a religious text she has been reading for fifteen minutes. "
+        "Pinned to the wall above Cottle's desk: a chart titled COTTLE'S RULES. "
+        "Seven bullet points. Six of them are blacked out in marker. The seventh, "
+        "visible, simply reads: GO AWAY."
     ),
     exits={
         "north": "corridor_a",
@@ -859,7 +889,11 @@ register_room(Room(
         "model ship has not visibly progressed in three years. Two glasses sit on "
         "the desk. One of them has lipstick on it that is not a woman's. A model "
         "ship sits in dry dock. Two leather chairs face each other across the desk "
-        "in a way that is, frankly, romantic. You are not supposed to be in here."
+        "in a way that is, frankly, romantic. You are not supposed to be in here. "
+        "On a bookshelf in the corner, wedged between leather-bound regs and the "
+        "model-ship manuals, there is a single battered paperback titled POEMS OF "
+        "UNREQUITED FRIENDSHIP. The bookmark is on page 47. The bookmark is a "
+        "pressed flower."
     ),
     exits={
         "east": "corridor_a",
@@ -937,7 +971,9 @@ register_room(Room(
         "blonde woman in a red dress. She is sitting in a meditation posture. She "
         "appears to be expecting you. A guard at the door has the thousand-yard "
         "stare of a man who has been making eye contact too long with somebody who "
-        "shouldn't be able to see him."
+        "shouldn't be able to see him. Taped to the wall at eye level outside the "
+        "cell, in clean block printing: 'DO NOT MAKE EYE CONTACT.' Below it, in a "
+        "different hand: 'OR DO. MY CAREER, MY CHOICE. — guard #3'"
     ),
     exits={
         "west": "corridor_a",
@@ -985,7 +1021,11 @@ register_room(Room(
         "corner because, you suppose, somebody has to hang it somewhere. A bench "
         "runs the length of the window. The bench has been polished by decades of "
         "officers brooding very hard onto it. There is a faint impression in the "
-        "bench shaped like a single sitting man. You don't sit there."
+        "bench shaped like a single sitting man. You don't sit there. In another "
+        "corner, on a small ledge, a glass terrarium contains a single lonely "
+        "succulent. The card beside it, in officer-grade calligraphy, reads "
+        "'ADAMA SAYS NOT TO ANTHROPOMORPHIZE THE PLANT.' The plant, by your "
+        "assessment, has handled the anthropomorphizing itself."
     ),
     exits={
         "down": "corridor_a",
@@ -1047,7 +1087,9 @@ register_room(Room(
         "Admiral Adama is at the plot. The plot is illuminated. The plot is "
         "displaying a jump vector that is, conspicuously, NOT YET ENTERED. "
         "Specialists are not supposed to be in here. Nobody seems to have noticed "
-        "you yet."
+        "you yet. Taped to the secondary plot console, in Gaeta's neat handwriting: "
+        "'IF DRADIS GOES RED, DO THE THING. IF YOU FORGET WHAT THE THING IS, GAETA "
+        "KNOWS THE THING.' Below it, in someone else's hand: 'GAETA IS THE THING.'"
     ),
     exits={
         "south": "corridor_a",
@@ -1117,7 +1159,10 @@ register_room(Room(
         "A small, hot, humid maintenance bay. One vat, large and slowly turning. "
         "Steam pipes overhead. A single warning sign: PROTEIN CYCLE — DO NOT "
         "BREATHE THROUGH NOSE — ATTEMPT TO BREATHE THROUGH MOUTH AS LITTLE AS "
-        "POSSIBLE. The smell is — the smell is its own kind of historical record."
+        "POSSIBLE. The smell is — the smell is its own kind of historical record. "
+        "On the workbench in the corner, a small radio is softly playing a song you "
+        "don't recognize. Four notes. Then four more. The melody loops. The radio is "
+        "unplugged. The radio has not been plugged in since the second war."
     ),
     exits={
         "up": "env_control",
@@ -1183,6 +1228,9 @@ register_room(Room(
         "is not lipstick. The other is monogrammed, in tiny gold filigree: 'SAUL.'\n\n"
         "There is a photograph on the workbench, propped up, of two young officers "
         "in dress uniform. Hands held below frame.\n\n"
+        "On the wall, in a small frame: a single dried flower from Picon. The card "
+        "beside it, in Tigh's tight pencil handwriting: 'PICON, 2982. SHE WAS FROM "
+        "PICON. HE BOUGHT HER A FLOWER. HE KEPT THE FLOWER. — S.'\n\n"
         "You are looking at a thirty-year affair. You are looking at it from inside.\n"
         "You should leave. You will not leave fast enough."
     ),
@@ -1264,6 +1312,8 @@ register_room(Room(
         "Soft light from a source you cannot identify. A figure in red, in the\n"
         "corner. The figure has been here longer than you have been alive. The\n"
         "figure has been here longer than the Galactica has been Galactica.\n\n"
+        "Painted on the deck plate in chalk that has not faded: a perfect circle.\n"
+        "Inside the circle, in the same hand, one word in block letters: SOON.\n\n"
         "You are calm. You are calm in a way you have not been calm before. This\n"
         "is, on balance, the most alarming part."
     ),

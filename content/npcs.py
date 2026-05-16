@@ -154,24 +154,35 @@ def _tigh_spaced_ending(world) -> HandlerResult:
     )
 
 
+TIGH_DEJA_VU = (
+    "Tigh stops mid-sip. He stares at you through the stall slats. His one good eye\n"
+    "narrows.\n\n"
+    "'Have I — have I given you this canteen before, son? I feel like I have. I feel\n"
+    "like I have given you this canteen MORE than once. That can't be right. That\n"
+    "would be a frakkin' time loop. There is no frakkin' time loop. That'd be a\n"
+    "regulation violation. The regs are very clear on time loops.'\n\n"
+    "He shakes it off. He always shakes it off."
+)
+
+
 def _tigh_give_quest(world):
     # Once Tigh's suspicion is high, the next default talk triggers the spaced ending.
     if _tigh_should_space(world):
         return _tigh_spaced_ending(world)
+    deja = _ng_plus_deja_vu(world, "tigh", TIGH_DEJA_VU)
     if world.flags.get("got_canteen"):
-        return (
+        return deja + (
             "Tigh squints at you through the stall slats. 'You still here, specialist? "
             "ENGINEERING. THIRD VALVE. BRASS HANDLE. The one that, technically, doesn't "
             "exist. Now MOVE.'"
         )
     world.flags["got_canteen"] = True
     move_item_to_inventory(world, "canteen")
-    # The napkin appears on the floor — Tigh drops it during the handoff.
     if "napkin" not in world.inventory and "napkin" not in world.room_items.get("head_deck_5", []):
         move_item_to_room(world, "napkin", "head_deck_5")
     first_wrong = _tigh_next_wrong_name(world)
     second_wrong = _tigh_next_wrong_name(world)
-    return (
+    return deja + (
         "The stall door bangs open. Colonel Tigh is sitting fully clothed on a closed "
         "toilet, one eye on the door, the other somewhere in the past. He thrusts a "
         "battered metal canteen at you like it's a baby he's tired of holding. A "
@@ -356,9 +367,33 @@ HADRIAN_RUMORS = [
 ]
 
 
+def _ng_plus_deja_vu(world, npc_id: str, line: str) -> str:
+    """Returns the déjà vu prefix the first time the player engages this NPC in
+    a new-game-plus run; empty string otherwise."""
+    if not world.flags.get("ng_plus"):
+        return ""
+    state = world.npc_state.setdefault(npc_id, {})
+    if state.get("ng_plus_acknowledged"):
+        return ""
+    state["ng_plus_acknowledged"] = True
+    return line + "\n\n"
+
+
+HADRIAN_DEJA_VU = (
+    "He squints. He squints harder. He sets down the cards.\n\n"
+    "'Wait. Wait wait wait. Have we — have we DONE this before? Have we had this\n"
+    "EXACT conversation before? I just got the weirdest frakkin' sense of —\n"
+    "never mind. Never mind. Reincarnation is a frakkin' hack. Pythia said that.\n"
+    "Pythia would've said that if Pythia weren't a frakkin' hack.'\n\n"
+    "(He recovers. He always recovers.)"
+)
+
+
 def hadrian_on_talk(world, topic):
     state = world.npc_state.setdefault("hadrian", {"rumor_index": 0})
     bump_stat(world, "morale", 2)  # fraternizing always helps
+
+    deja = _ng_plus_deja_vu(world, "hadrian", HADRIAN_DEJA_VU) if topic is None else ""
 
     if topic in ("self", "name", "hadrian"):
         return (
@@ -430,7 +465,7 @@ def hadrian_on_talk(world, topic):
 
     rumor = HADRIAN_RUMORS[state["rumor_index"] % len(HADRIAN_RUMORS)]
     state["rumor_index"] += 1
-    return rumor
+    return deja + rumor
 
 
 register_npc(NPC(
@@ -464,9 +499,10 @@ ADAMA_PROVERBS = [
 
 
 def _adama_proverb(world) -> str:
-    state = world.npc_state.setdefault("adama", {"proverb_index": 0})
-    p = ADAMA_PROVERBS[state["proverb_index"] % len(ADAMA_PROVERBS)]
-    state["proverb_index"] += 1
+    state = world.npc_state.setdefault("adama", {})
+    idx = state.get("proverb_index", 0)
+    p = ADAMA_PROVERBS[idx % len(ADAMA_PROVERBS)]
+    state["proverb_index"] = idx + 1
     return p
 
 
@@ -538,11 +574,22 @@ def _adama_receive_napkin(world):
     return _adama_hero_ending(world)
 
 
+ADAMA_DEJA_VU = (
+    "He does not turn. He speaks as if he had been about to.\n\n"
+    "'Specialist. We have not met. We have, however, conferred. I do not know how\n"
+    "I know that. The scriptures are quiet on the matter. I trust the scriptures\n"
+    "less than I trust my own discomfort. My discomfort is, currently, you.'\n\n"
+    "He turns. Just to look at you. Just for a second. The look is, in its way,\n"
+    "the most acknowledgement you will ever get from this man."
+)
+
+
 def adama_on_talk(world, topic):
     bump_stat(world, "morale", -2)  # standing at attention takes it out of you
 
     if topic is None:
-        return (
+        deja = _ng_plus_deja_vu(world, "adama", ADAMA_DEJA_VU)
+        return deja + (
             "Admiral Adama turns, slowly, like a turret. He fixes you with a look "
             "that has seen seventeen wars and is unimpressed by yours.\n\n"
             f"'{_adama_proverb(world)}'\n\n"
@@ -1173,9 +1220,19 @@ def six_on_talk(world, topic):
     cv = get_stat(world, "cylon_vibes")
 
     if topic is None:
+        deja = ""
+        if world.flags.get("ng_plus") and not world.npc_state.setdefault("six", {}).get("ng_plus_acknowledged"):
+            world.npc_state["six"]["ng_plus_acknowledged"] = True
+            deja = (
+                "She is, somehow, smiling before you have arrived.\n\n"
+                "'I knew you would come back. You always do. That's what we have, you\n"
+                "and me. Iteration. Every time, you are closer to the version of\n"
+                "yourself that finally — ' She lets the sentence end where it ended.\n"
+                "The corridor goes on.\n\n"
+            )
         hint_idx = max(0, (cv // 20) - 1)
         hint = SIX_REVEAL_HINTS[hint_idx % len(SIX_REVEAL_HINTS)] if cv >= 40 else ""
-        text = (
+        text = deja + (
             "She turns to face you fully. The corridor narrows. The air does not\n"
             "exactly heat, but it becomes... attentive.\n\n"
             f"'{world.player_name}.' She says your name like she has been saying it\n"

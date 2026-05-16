@@ -1,6 +1,7 @@
 """Per-session game loop. Owns world + io + lifecycle for one player."""
 
 from dataclasses import dataclass
+from typing import Optional
 
 from . import commands, events, parser, save as save_module
 from .io import IO
@@ -18,7 +19,11 @@ class Session:
     io: IO
     world: WorldState
 
-    def run(self) -> None:
+    def run(self) -> Optional[dict]:
+        """Run the per-session game loop.
+
+        Returns None on normal quit, or a dict describing a new-game-plus
+        request that main() should honor by spinning up a fresh session."""
         if self.world.current_room not in self.world.visited_rooms:
             self.world.visited_rooms.append(self.world.current_room)
         room_text = commands.describe_room(self.world, first_visit=True)
@@ -43,14 +48,11 @@ class Session:
             if result.advance_turn:
                 self.world.turn += 1
                 self._tick_exhaustion()
-                # Post-tick threshold checks
                 if self._check_collapse():
-                    pass  # _check_collapse handles its own messaging
+                    pass
                 if self._check_suspicion_spaced():
-                    self._autosave_quiet()
-                    self.io.send("")
-                    self.io.send("── END ──")
-                    break
+                    self._finalize_ending()
+                    return self._prompt_new_game_plus()
                 ambient = events.tick(self.world)
                 if ambient:
                     self.io.send("")
@@ -58,13 +60,58 @@ class Session:
                 if self.world.turn % AUTOSAVE_EVERY_N_TURNS == 0:
                     self._autosave_quiet()
             if result.ended:
-                self._autosave_quiet()
-                self.io.send("")
-                self.io.send("── END ──")
-                break
+                self._finalize_ending()
+                return self._prompt_new_game_plus()
             if result.quit:
                 self._autosave_quiet()
-                break
+                return None
+
+        return None
+
+    def _finalize_ending(self) -> None:
+        """Print the epitaph, unlock any achievements, autosave, then the END marker."""
+        # Epitaph (tragicomic closer) keyed off the ending id.
+        try:
+            from content.epitaphs import pick_epitaph
+            ep = pick_epitaph(self.world.flags.get("__ended__"))
+            if ep:
+                self.io.send("")
+                self.io.send(ep)
+        except Exception:
+            pass
+        # Achievement check + display (persisted to disk).
+        try:
+            from content.achievements import check_and_unlock, render_unlock_banner
+            unlocked = check_and_unlock(self.world)
+            for ach in unlocked:
+                self.io.send("")
+                self.io.send(render_unlock_banner(ach))
+        except Exception:
+            pass
+        self._autosave_quiet()
+        self.io.send("")
+        self.io.send("── END ──")
+
+    def _prompt_new_game_plus(self) -> Optional[dict]:
+        """Ask if the player wants to begin again with one carried-over flag.
+
+        Returns a dict for main() to honor, or None for normal exit."""
+        self.io.send("")
+        self.io.send(
+            "Begin again, specialist? Your shift, somehow, has not ended.\n"
+            "Some things you will remember. Most you will not. [y/n]"
+        )
+        try:
+            raw = self.io.receive("> ").strip().lower()
+        except Exception:
+            return None
+        if raw not in ("y", "yes"):
+            return None
+        return {
+            "ng_plus": True,
+            "previous_ending": self.world.flags.get("__ended__"),
+            "ng_plus_count": self.world.flags.get("ng_plus_count", 0) + 1,
+        }
 
     def _tick_exhaustion(self) -> None:
         if self.world.turn % EXHAUSTION_TICK_EVERY == 0:
