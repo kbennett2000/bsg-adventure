@@ -148,6 +148,11 @@ class Session:
         try/except so a single failure doesn't crash the player out of an
         ending. Failures are routed to `log_fn` so the server operator can
         see them in journald — they used to be totally silent."""
+        # Tear down any sub-mode flags BEFORE the autosave so they don't
+        # survive the run that spawned them. The death-threshold check at
+        # the top of the loop can fire an ending while the player is mid-
+        # press-conference, bypassing the conference's own cleanup path.
+        self._teardown_submodes()
         ending_id = self.world.flags.get("__ended__")
         # Epitaph (tragicomic closer) keyed off the ending id.
         try:
@@ -170,6 +175,16 @@ class Session:
         self._autosave_quiet()
         self.io.send("")
         self.io.send("── END ──")
+
+    def _teardown_submodes(self) -> None:
+        """Clear any sub-mode (currently: press conference) flags. Called from
+        both _finalize_ending and the resurrection-drift path so a death or
+        revival mid-sub-mode doesn't leak state across the boundary."""
+        try:
+            from content import press
+            press.clear_press_state(self.world)
+        except Exception as exc:
+            self.log_fn(f"[teardown-press-error] {exc!r}")
 
     def _prompt_new_game_plus(self) -> Optional[dict]:
         """Ask if the player wants to begin again with one carried-over flag.
@@ -378,6 +393,9 @@ class Session:
         ):
             w.flags.pop(k, None)
         w.flags["_last_rollover_day"] = w.day
+        # If the player died mid-press-conference, they don't wake up still
+        # in it — the conference belongs to the run that just ended.
+        self._teardown_submodes()
 
 
 def start_session_local(io: IO, player_name: str, starting_room: str) -> Session:

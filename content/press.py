@@ -605,11 +605,22 @@ def _finalize(world) -> str:
     )
 
 
-def _clear_press_state(world) -> None:
-    """Tear down all per-conference flags so a future invocation starts clean."""
+def clear_press_state(world) -> None:
+    """Tear down all per-conference flags so a future invocation starts clean.
+    Safe to call any number of times — pops only the keys that exist.
+
+    Also called from the session's ending-finalize and resurrection-drift
+    paths so a death mid-conference doesn't leak `press_active=True` into
+    the autosave (which would re-prompt a stale question on the next load
+    even though the run that spawned it is over)."""
     for k in ("press_active", "press_round", "press_questions",
               "press_credibility"):
         world.flags.pop(k, None)
+
+
+# Back-compat alias for callers inside this module that used the old
+# underscore-prefixed name. New callers should use the public name.
+_clear_press_state = clear_press_state
 
 
 # ─── exposed predicate ───────────────────────────────────────────────────────

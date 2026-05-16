@@ -253,6 +253,95 @@ def test_cmd_sleep_does_not_call_session_internals():
     assert result.shift_advanced is True
 
 
+# ─── Bug 7 (follow-up): press_active must not survive an ending boundary ────
+
+
+def _seed_mid_press_state(world) -> None:
+    """Construct a plausible mid-conference state on `world`."""
+    world.flags["press_active"] = True
+    world.flags["press_round"] = 3
+    world.flags["press_questions"] = [q["id"] for q in press.QUESTIONS]
+    world.flags["press_credibility"] = 50
+
+
+def test_press_state_cleared_when_spaced_mid_conference():
+    """Death threshold fires mid-press → SPACED ending → press_active and
+    its companion keys must NOT survive into the autosaved world."""
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["BSG_SAVE_DIR"] = tmp
+        world = new_world("PressVictim", "sickbay")
+        world.visited_rooms.append("sickbay")
+        _seed_mid_press_state(world)
+        set_stat(world, "suspicion", 100)
+        io = ScriptedIO(["n"])  # decline NG+ after the ending
+        Session(io=io, world=world).run()
+        assert world.flags.get("__ended__") == "spaced"
+        # All four press keys must be gone from the live world…
+        for k in ("press_active", "press_round", "press_questions",
+                  "press_credibility"):
+            assert k not in world.flags, (
+                f"press flag {k!r} leaked past the SPACED ending"
+            )
+
+
+def test_press_state_cleared_in_autosave_after_ending():
+    """The autosave written during _finalize_ending must reflect the cleared
+    sub-mode flags — otherwise a later reload would re-prompt a stale
+    question on top of a finished run."""
+    from engine import save as save_module
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["BSG_SAVE_DIR"] = tmp
+        world = new_world("AutosaveVictim", "sickbay")
+        world.visited_rooms.append("sickbay")
+        _seed_mid_press_state(world)
+        set_stat(world, "suspicion", 100)
+        io = ScriptedIO(["n"])
+        Session(io=io, world=world).run()
+        # Re-load auto slot and confirm cleanliness on disk.
+        loaded = save_module.load_world("AutosaveVictim", "auto")
+        for k in ("press_active", "press_round", "press_questions",
+                  "press_credibility"):
+            assert k not in loaded.flags, (
+                f"press flag {k!r} persisted into autosave after SPACED ending"
+            )
+        assert loaded.flags.get("__ended__") == "spaced"
+
+
+def test_press_state_cleared_on_cylon_resurrection():
+    """A Cylon dying mid-press resurrects in env_control with halved stats
+    — and crucially NOT still mid-conference. Press flags must be cleared
+    by _apply_resurrection_drift."""
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["BSG_SAVE_DIR"] = tmp
+        world = new_world("CylonAnchor", "sickbay")
+        world.visited_rooms.append("sickbay")
+        world.flags["is_cylon"] = True
+        _seed_mid_press_state(world)
+        set_stat(world, "suspicion", 100)
+        # Resurrect path is non-terminal; quit afterwards.
+        io = ScriptedIO(["quit"])
+        Session(io=io, world=world).run()
+        assert world.flags.get("resurrection_count") == 1
+        # Ending should be cleared by resurrection.
+        assert world.flags.get("__ended__") is None
+        # And the press conference is over.
+        for k in ("press_active", "press_round", "press_questions",
+                  "press_credibility"):
+            assert k not in world.flags, (
+                f"press flag {k!r} survived Cylon resurrection"
+            )
+
+
+def test_clear_press_state_is_idempotent():
+    """The public teardown must be safe to call multiple times on a world
+    that no longer has any press flags."""
+    world = new_world("NoConference", "env_control")
+    # Two calls in a row, neither should raise.
+    press.clear_press_state(world)
+    press.clear_press_state(world)
+    assert "press_active" not in world.flags
+
+
 def test_sleep_through_session_loop_fires_shift_change_banner():
     """End-to-end: `sleep` in the loop fires the shift-change banner via
     the new shift_advanced routing. We start on Morning Watch (shift 0);
