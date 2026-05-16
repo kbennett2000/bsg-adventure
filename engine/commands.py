@@ -49,12 +49,24 @@ NOTHING_HERE_REPLIES = [
 # ─── object resolution ─────────────────────────────────────────────────────────
 
 
+_SUBSTRING_MIN_LEN = 3   # below this, queries must be exact name or alias matches
+
+
 def _matches(query: str, thing) -> bool:
     q = query.lower().strip()
     name = thing.name.lower()
     aliases = [a.lower() for a in getattr(thing, "aliases", [])]
+    # Exact name or alias always wins. This is what short canonical names
+    # like "six", "tigh", "mop" hit; the substring path below would also
+    # have caught them, but exact match is more correct AND lets us gate
+    # substring on a minimum length.
     if q == name or q in aliases:
         return True
+    # Substring matches are too eager for very short queries — `examine c`
+    # used to match "ceiling", "console", "cigarette", etc. depending on
+    # resolve order. Require at least 3 chars to fall back to substring.
+    if len(q) < _SUBSTRING_MIN_LEN:
+        return False
     if q in name:
         return True
     for a in aliases:
@@ -125,10 +137,6 @@ def describe_room(world: WorldState, first_visit: bool = False) -> str:
     if visible_exit_set:
         parts += ["", "Exits: " + ", ".join(sorted(visible_exit_set)) + "."]
     return "\n".join(parts)
-
-
-def _npc_visible(world: WorldState, npc_id: str) -> bool:
-    return not world.flags.get(f"npc_hidden_{npc_id}", False)
 
 
 def _apply_stat_filter(text: str, world: WorldState) -> str:
@@ -309,11 +317,27 @@ def cmd_use(world, command, session) -> HandlerResult:
     if item is None:
         return HandlerResult(text=f"You don't have any \"{command.obj}\" to use.", advance_turn=False)
     if command.target:
-        return HandlerResult(text=f"You wave the {item.name} vaguely at the {command.target}. Nothing happens. You feel watched.")
+        # `use X on Y` — dispatch through the item's on_use_with table if it
+        # has a registered handler for this specific target. Resolve the target
+        # against everything in scope (room items, NPCs, or inventory).
+        target_thing = _resolve_any(command.target, world)
+        if target_thing is None:
+            return HandlerResult(
+                text=f"You don't see any \"{command.target}\" to use the {item.name} on."
+            )
+        handler = item.on_use_with.get(target_thing.id) if item.on_use_with else None
+        if handler is None:
+            return HandlerResult(
+                text=f"You wave the {item.name} vaguely at the {target_thing.name}. "
+                     "Nothing happens. You feel watched."
+            )
+        result = handler(world)
+        if isinstance(result, HandlerResult):
+            return result
+        return HandlerResult(text=result)
     if item.on_use is None:
         return HandlerResult(text=f"You can't think of anything productive to do with the {item.name} right now.")
     result = item.on_use(world)
-    # Items can return a plain string (normal case) or a HandlerResult (ending trigger).
     if isinstance(result, HandlerResult):
         return result
     return HandlerResult(text=result)

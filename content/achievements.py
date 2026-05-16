@@ -66,9 +66,14 @@ def load_unlocked(player_name: str) -> set[str]:
 
 
 def save_unlocked(player_name: str, unlocked: set[str]) -> None:
+    """Write the unlocked set to disk atomically (tmp + fsync + os.replace).
+
+    Achievement state is the only player-facing thing we persist outside the
+    world save, so it gets the same durability story as save_world(): a
+    mid-write poweroff cannot tear the file."""
     p = _achievements_path(player_name)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(sorted(unlocked), indent=2), encoding="utf-8")
+    payload = json.dumps(sorted(unlocked), indent=2)
+    save_module.atomic_write_text(p, payload)
 
 
 def check_and_unlock(world) -> list[dict]:

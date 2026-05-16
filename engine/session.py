@@ -1,10 +1,10 @@
 """Per-session game loop. Owns world + io + lifecycle for one player."""
 
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Callable, Optional
 
 from . import commands, events, parser, save as save_module
-from .io import IO
+from .io import IO, Disconnected
 from .world import WorldState, bump_stat, get_stat, new_world
 
 
@@ -14,10 +14,18 @@ EXHAUSTION_TICK_EVERY = 1          # every N turns
 COLLAPSE_LOSES_ITEMS = ("canteen", "mop", "algae_bar")  # napkin is spared
 
 
+def _noop_log(_msg: str) -> None:
+    """Default log function — silent. Server mode injects its own."""
+
+
 @dataclass
 class Session:
     io: IO
     world: WorldState
+    # Optional log sink for failure modes that shouldn't crash gameplay but
+    # also shouldn't be invisible (e.g., epitaph render failure during ending
+    # finalize). Server mode wires this to its log_fn so journald sees it.
+    log_fn: Callable[[str], None] = field(default=_noop_log)
 
     def run(self) -> Optional[dict]:
         """Run the per-session game loop.
@@ -38,7 +46,12 @@ class Session:
 
         while True:
             self.io.send("")
-            raw = self.io.receive()
+            try:
+                raw = self.io.receive()
+            except Disconnected:
+                # Network player dropped. Save and exit cleanly.
+                self._autosave_quiet()
+                return None
             if raw is None:
                 break
             cmd = parser.parse(raw)
@@ -48,8 +61,7 @@ class Session:
             if result.advance_turn:
                 self.world.turn += 1
                 self._tick_exhaustion()
-                if self._check_collapse():
-                    pass
+                self._check_collapse()
                 if self._check_suspicion_spaced():
                     self._finalize_ending()
                     return self._prompt_new_game_plus()
@@ -69,16 +81,22 @@ class Session:
         return None
 
     def _finalize_ending(self) -> None:
-        """Print the epitaph, unlock any achievements, autosave, then the END marker."""
+        """Print the epitaph, unlock any achievements, autosave, then the END marker.
+
+        Both the epitaph render and the achievement check are wrapped in
+        try/except so a single failure doesn't crash the player out of an
+        ending. Failures are routed to `log_fn` so the server operator can
+        see them in journald — they used to be totally silent."""
+        ending_id = self.world.flags.get("__ended__")
         # Epitaph (tragicomic closer) keyed off the ending id.
         try:
             from content.epitaphs import pick_epitaph
-            ep = pick_epitaph(self.world.flags.get("__ended__"))
+            ep = pick_epitaph(ending_id)
             if ep:
                 self.io.send("")
                 self.io.send(ep)
-        except Exception:
-            pass
+        except Exception as exc:
+            self.log_fn(f"[finalize-epitaph-error] ending={ending_id!r} {exc!r}")
         # Achievement check + display (persisted to disk).
         try:
             from content.achievements import check_and_unlock, render_unlock_banner
@@ -86,8 +104,8 @@ class Session:
             for ach in unlocked:
                 self.io.send("")
                 self.io.send(render_unlock_banner(ach))
-        except Exception:
-            pass
+        except Exception as exc:
+            self.log_fn(f"[finalize-achievement-error] player={self.world.player_name!r} {exc!r}")
         self._autosave_quiet()
         self.io.send("")
         self.io.send("── END ──")

@@ -73,9 +73,10 @@ class BSGRequestHandler(socketserver.StreamRequestHandler):
             self.server.release_name(name)
             log(f"[disconnect] {peer} '{name}'")
 
-    @staticmethod
-    def _run_session_with_ng_plus(io, name: str, build_world) -> None:
+    def _run_session_with_ng_plus(self, io, name: str, build_world) -> None:
         from engine.session import Session
+
+        log = self.server.log
 
         ng_plus_context = None
         while True:
@@ -89,7 +90,9 @@ class BSGRequestHandler(socketserver.StreamRequestHandler):
                 )
                 io.send("")
             world = build_world(name, ng_plus_context)
-            session = Session(io=io, world=world)
+            # Inject the server's log function so ending-finalize failures
+            # surface in journald instead of vanishing.
+            session = Session(io=io, world=world, log_fn=log)
             next_action = session.run()
             if not next_action or not next_action.get("ng_plus"):
                 return

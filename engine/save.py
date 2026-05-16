@@ -10,6 +10,20 @@ from .world import SAVE_VERSION, WorldState
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9_]{1,32}$")
 
 
+def atomic_write_text(path: Path, payload: str) -> None:
+    """Write `payload` to `path` atomically: write to a tmp file, fsync, and
+    rename onto the target. The rename is atomic on POSIX so a mid-write
+    power loss can never leave the destination half-written. Used by
+    save_world() and content/achievements.py."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(payload)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
 def is_safe_name(name: str) -> bool:
     return bool(_SAFE_NAME.match(name))
 
@@ -33,14 +47,8 @@ def _slot_path(player_name: str, slot: str) -> Path:
 def save_world(world: WorldState, slot: str = "auto") -> Path:
     """Atomic write: tmp + fsync + os.replace. Survives mid-save power loss."""
     path = _slot_path(world.player_name, slot)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
     payload = json.dumps(world.to_dict(), indent=2, sort_keys=True)
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(payload)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, path)
+    atomic_write_text(path, payload)
     return path
 
 

@@ -6,10 +6,16 @@ import random
 import sys
 
 import content  # noqa: F401  — triggers all content registration
-from engine.io import LocalIO
+from engine.io import Disconnected, LocalIO
 from engine.save import is_safe_name
 from engine.session import Session
 from engine.world import new_world
+
+
+# Names that would collide with the quit-verb sentinel. Reserved so a player
+# can't be named "quit" (and a network disconnect at the name prompt can't
+# silently create a player called "quit").
+RESERVED_NAMES = {"quit", "exit", "q"}
 
 
 TITLE_ART = """
@@ -50,23 +56,32 @@ SUBTITLES = [
 NAME_PROMPT = "INTERCOM: STATE YOUR NAME FOR THE DUTY ROSTER, SPECIALIST.\n> "
 
 
-def show_title(io: LocalIO) -> None:
+def show_title(io) -> None:
     io.send(TITLE_ART)
     io.send("              " + random.choice(SUBTITLES))
     io.send("")
     io.send("              [press enter to begin your shift]")
-    try:
-        io.receive("")
-    except Exception:
-        pass
+    # If the receive fails (Disconnected from NetIO, KeyboardInterrupt, etc.),
+    # let it propagate to the caller's handler so it can be logged/dispatched.
+    io.receive("")
 
 
-def prompt_for_name(io: LocalIO) -> str:
+def prompt_for_name(io) -> str:
+    """Prompt for a player name. Raises engine.io.Disconnected if the user
+    (or the transport) ends the prompt: stdin EOF on LocalIO becomes the
+    literal string 'quit' which we treat as intentional exit; NetIO raises
+    Disconnected directly. Either way, we never accept a quit-verb token as
+    a player name (that used to silently create a save called 'quit/')."""
     while True:
         raw = io.receive(NAME_PROMPT).strip()
         if not raw:
             io.send("INTERCOM: I CAN'T HEAR YOU OVER THE FRAKKIN' VENTS, TRY AGAIN.")
             continue
+        if raw.lower() in RESERVED_NAMES:
+            # LocalIO returns 'quit' on stdin EOF — that's an intentional exit.
+            # A live player typing 'quit' at the name prompt also wants to exit.
+            # Either way: don't create a player with this name.
+            raise Disconnected("user exited at name prompt")
         if not is_safe_name(raw):
             io.send("INTERCOM: NAME MUST BE LETTERS, NUMBERS, OR UNDERSCORES, UP TO 32 CHARACTERS, SPECIALIST. TRY AGAIN.")
             continue
@@ -120,8 +135,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def run_local() -> int:
     io = LocalIO()
-    show_title(io)
-    name = prompt_for_name(io)
+    try:
+        show_title(io)
+        name = prompt_for_name(io)
+    except Disconnected:
+        return 0
     io.send(f"\nINTERCOM: ACKNOWLEDGED, SPECIALIST {name.upper()}. WELCOME TO ANOTHER FRAKKIN' SHIFT.\n")
 
     ng_plus_context: dict | None = None

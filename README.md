@@ -264,9 +264,14 @@ python3 run_tests.py            # all
 python3 run_tests.py parser     # one suite by substring
 ```
 
-53 tests cover: parser, save/load atomicity, the opening quest flow,
-all three endings, every NPC's default dialogue, ambient events on and
-off, and the first-visit / revisit room logic.
+208 tests cover: parser, save/load atomicity (full WorldState round-trip),
+the opening quest flow, every ending variant (Hero / Spaced via three
+paths / Cylon Love Triangle / Love Quadrangle / Forbidden Knowledge),
+all five side quests start-to-completion, every NPC's default dialogue,
+ambient events on and off, first-visit / revisit room logic, romance
+state machine, multiplayer LAN server (concurrent sessions, same-name
+refusal, idle timeout, CRLF handling), achievements persistence, balance
+tuning (Promotion Material reachability), and the eight critique fixes.
 
 ---
 

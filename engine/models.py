@@ -39,3 +39,7 @@ class Item:
     on_use: Optional[Callable] = None
     on_eat: Optional[Callable] = None
     on_drink: Optional[Callable] = None
+    # Targeted-use handlers: keyed by target id. `use mop on locker` dispatches
+    # through this dict if the mop registered a handler for "locker". Falls
+    # through to the canned "nothing happens" line otherwise.
+    on_use_with: dict[str, Callable] = field(default_factory=dict)

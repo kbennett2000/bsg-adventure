@@ -2,6 +2,14 @@ import socket
 from abc import ABC, abstractmethod
 
 
+class Disconnected(Exception):
+    """Raised by network IO on socket EOF / timeout / reset. Lets the caller
+    distinguish 'transport disconnected' from 'user typed quit' — these used
+    to collapse into the same 'quit' sentinel and produced an exploitable
+    edge case at the name prompt (a dropped client became a player called
+    'quit')."""
+
+
 class IO(ABC):
     @abstractmethod
     def send(self, text: str) -> None: ...
@@ -51,15 +59,15 @@ class NetIO(IO):
                 self._wfile.write(prompt.encode("utf-8", errors="replace"))
                 self._wfile.flush()
             except (BrokenPipeError, OSError):
-                return "quit"
+                raise Disconnected("send during prompt failed")
         try:
             line = self._rfile.readline()
-        except (socket.timeout, TimeoutError):
-            return "quit"
-        except (ConnectionResetError, OSError):
-            return "quit"
+        except (socket.timeout, TimeoutError) as exc:
+            raise Disconnected("idle timeout") from exc
+        except (ConnectionResetError, OSError) as exc:
+            raise Disconnected("connection reset") from exc
         if not line:
-            return "quit"  # EOF on the socket
+            raise Disconnected("EOF")
         return line.decode("utf-8", errors="replace").rstrip("\r\n").rstrip()
 
 
