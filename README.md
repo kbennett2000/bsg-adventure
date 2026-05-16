@@ -41,8 +41,69 @@ future format migrations.
 
 ### Multi-session over LAN
 
-Not in this build yet. The engine has the IO abstraction in place so the
-server slots in later. For now: single local terminal session.
+The host machine runs a TCP server; anyone on the same network connects
+from their own terminal and plays their own independent session. No
+internet exposure, no auth — LAN only.
+
+**Start the server:**
+
+```bash
+python3 main.py --serve
+```
+
+Defaults: binds to `0.0.0.0:4404`, allows up to 8 concurrent sessions,
+30-minute idle timeout. Override via flags or env vars:
+
+```bash
+BSG_PORT=4404 BSG_MAX_SESSIONS=12 python3 main.py --serve
+```
+
+Or:
+
+```bash
+python3 main.py --serve --bind 192.168.1.10 --port 4404 --max-sessions 12
+```
+
+**Connect from another terminal on the LAN:**
+
+```bash
+nc <host-ip> 4404            # most common
+ncat <host-ip> 4404
+telnet <host-ip> 4404        # also works; CRLF line endings are handled
+```
+
+**Policies:**
+
+- One session per player name. A second connection using the same name
+  gets a polite refusal and disconnects.
+- Player names sanitized to `[A-Za-z0-9_]{1,32}` before they touch the
+  filesystem.
+- 30-minute idle timeout. The session autosaves on the way out, so a
+  timed-out player loses at most ~10 turns of progress.
+- Reconnecting with the same name auto-resumes from `auto.json`.
+
+**Operational notes:**
+
+- Save files live in `BSG_SAVE_DIR` (default: `./saves`). Set this to a
+  location outside the install directory so package upgrades don't blow
+  away player progress.
+- A systemd unit template is in [systemd/bsg-adventure.service](systemd/bsg-adventure.service).
+  Install:
+  ```bash
+  sudo useradd --system --home-dir /var/lib/bsg-adventure --create-home bsg
+  sudo mkdir -p /var/lib/bsg-adventure/saves
+  sudo chown -R bsg:bsg /var/lib/bsg-adventure
+  sudo cp -r . /opt/bsg-adventure
+  sudo cp systemd/bsg-adventure.service /etc/systemd/system/
+  sudo systemctl enable --now bsg-adventure
+  ```
+- Server stdout is connect/disconnect/session-error events. `journalctl
+  -u bsg-adventure -f` to tail.
+
+**LAN ONLY.** This server has no auth, no TLS, no rate limiting. Do not
+port-forward it. If the host has a public IP, bind to a specific LAN
+interface (`--bind 192.168.1.10`) so the listener doesn't bind to the
+WAN interface.
 
 ---
 

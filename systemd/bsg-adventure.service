@@ -1,0 +1,40 @@
+[Unit]
+Description=BSG Adventure LAN Server
+Documentation=https://github.com/kbennett2000/bsg-adventure
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/bsg-adventure/main.py --serve
+WorkingDirectory=/opt/bsg-adventure
+
+# Saves persist outside the install dir so package upgrades don't blow them away.
+Environment=BSG_SAVE_DIR=/var/lib/bsg-adventure/saves
+# Override these to taste. Defaults: 0.0.0.0:4404, 8 sessions, 30 min idle.
+# Environment=BSG_BIND_ADDR=192.168.1.10
+# Environment=BSG_PORT=4404
+# Environment=BSG_MAX_SESSIONS=8
+# Environment=BSG_IDLE_TIMEOUT=1800
+
+# Run as an unprivileged user. Create it with:
+#   sudo useradd --system --home-dir /var/lib/bsg-adventure --create-home bsg
+User=bsg
+Group=bsg
+
+Restart=on-failure
+RestartSec=5s
+
+# Hardening — none of these are strictly required, but they're cheap and good hygiene.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/bsg-adventure
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=multi-user.target

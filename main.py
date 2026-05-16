@@ -1,5 +1,7 @@
-"""Entry point for local play."""
+"""Entry point. Local single-player by default; `--serve` for LAN hosting."""
 
+import argparse
+import os
 import random
 import sys
 
@@ -74,7 +76,43 @@ def build_world(name: str, ng_plus_context: dict | None) -> "WorldState":
     return world
 
 
-def main() -> int:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        prog="bsg-adventure",
+        description="Battlestar Galactica Adventure. Single-player by default; --serve to host on LAN.",
+    )
+    p.add_argument(
+        "--serve",
+        action="store_true",
+        help="Run as a LAN multi-session server instead of local single-player.",
+    )
+    p.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("BSG_PORT", "4404")),
+        help="TCP port to listen on (server mode). Default 4404. Env: BSG_PORT.",
+    )
+    p.add_argument(
+        "--bind",
+        default=os.environ.get("BSG_BIND_ADDR", "0.0.0.0"),
+        help="Address to bind to (server mode). Default 0.0.0.0. Env: BSG_BIND_ADDR.",
+    )
+    p.add_argument(
+        "--max-sessions",
+        type=int,
+        default=int(os.environ.get("BSG_MAX_SESSIONS", "8")),
+        help="Max concurrent connections (server mode). Default 8. Env: BSG_MAX_SESSIONS.",
+    )
+    p.add_argument(
+        "--idle-timeout",
+        type=int,
+        default=int(os.environ.get("BSG_IDLE_TIMEOUT", "1800")),
+        help="Per-connection idle timeout in seconds (server mode). Default 1800. Env: BSG_IDLE_TIMEOUT.",
+    )
+    return p.parse_args(argv)
+
+
+def run_local() -> int:
     io = LocalIO()
     show_title(io)
     name = prompt_for_name(io)
@@ -97,6 +135,20 @@ def main() -> int:
         if not next_action or not next_action.get("ng_plus"):
             return 0
         ng_plus_context = next_action
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+    if args.serve:
+        from engine.server import serve_forever
+        serve_forever(
+            bind_addr=args.bind,
+            port=args.port,
+            max_sessions=args.max_sessions,
+            idle_timeout=args.idle_timeout,
+        )
+        return 0
+    return run_local()
 
 
 if __name__ == "__main__":
