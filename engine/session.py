@@ -57,7 +57,26 @@ class Session:
                 self.io.send("")
                 self.io.send(extra)
 
+        # If a save was made mid-press-conference, render the current question
+        # on resume — otherwise the player sees the room description and is
+        # left staring at a prompt with no idea they're back in the conference.
+        if self.world.flags.get("press_active"):
+            from content import press
+            q_text = press.render_current_question(self.world)
+            if q_text:
+                self.io.send("")
+                self.io.send(q_text)
+
         while True:
+            # Death thresholds are checked at the TOP of every iteration so a
+            # state set by the previous verb fires the ending BEFORE the
+            # player gets a turn whose first act might lower the stat back
+            # under the line (e.g. `wait` at suspicion=100).
+            if self._check_death_thresholds():
+                nxt = self._handle_end_or_resurrect()
+                if nxt is _CONTINUE:
+                    continue
+                return nxt
             self.io.send("")
             try:
                 raw = self.io.receive()
@@ -83,6 +102,10 @@ class Session:
             result = commands.dispatch(self.world, cmd, self)
             if result.text:
                 self.io.send(result.text)
+            # Shift-change hooks fired by handlers that advance the watch
+            # clock outside the auto-tick path (`sleep`).
+            if result.shift_advanced:
+                self._on_shift_change()
             if result.advance_turn:
                 self.world.turn += 1
                 self._tick_exhaustion()
@@ -94,17 +117,19 @@ class Session:
                 # cross-shift consequences (duty roster, hunger, day rollover).
                 if tick_shift_counter(self.world):
                     self._on_shift_change()
-                if self._check_suspicion_spaced():
-                    nxt = self._handle_end_or_resurrect()
-                    if nxt is _CONTINUE:
-                        continue
-                    return nxt
                 ambient = events.tick(self.world)
                 if ambient:
                     self.io.send("")
                     self.io.send(ambient)
                 if self.world.turn % AUTOSAVE_EVERY_N_TURNS == 0:
                     self._autosave_quiet()
+            # Post-dispatch death check — catches a verb that just bumped a
+            # stat over the threshold this turn (whether or not it advanced).
+            if self._check_death_thresholds():
+                nxt = self._handle_end_or_resurrect()
+                if nxt is _CONTINUE:
+                    continue
+                return nxt
             if result.ended:
                 nxt = self._handle_end_or_resurrect()
                 if nxt is _CONTINUE:
@@ -234,6 +259,16 @@ class Session:
         self.io.send("")
         self.io.send(commands.describe_room(self.world, first_visit=False))
         return True
+
+    def _check_death_thresholds(self) -> bool:
+        """Dispatch to every threshold-based ending. Centralized so the loop
+        can call it both at the top of an iteration AND after dispatch — that
+        way verbs that lower a stat as part of their effect (e.g. `wait`
+        decrements suspicion) can't escape an ending the previous turn set
+        up. Returns True if any ending fired."""
+        if self._check_suspicion_spaced():
+            return True
+        return False
 
     def _check_suspicion_spaced(self) -> bool:
         """At suspicion 100, anywhere, the player is intercepted and spaced.

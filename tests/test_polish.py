@@ -166,8 +166,9 @@ def test_session_returns_ng_plus_dict_when_player_answers_yes():
         world = new_world("Repeater", "env_control")
         world.visited_rooms.append("env_control")
         set_stat(world, "suspicion", 100)  # force spaced
-        # After ending: prompt is shown, we answer "y"
-        io = ScriptedIO(["salute", "y"])
+        # Pre-set sus=100 fires the spaced ending immediately on session
+        # entry (top-of-loop death check). Prompt is shown; we answer "y".
+        io = ScriptedIO(["y"])
         next_action = Session(io=io, world=world).run()
         assert next_action is not None
         assert next_action["ng_plus"] is True
@@ -181,7 +182,7 @@ def test_session_returns_none_when_player_declines_ng_plus():
         world = new_world("OneAndDone", "env_control")
         world.visited_rooms.append("env_control")
         set_stat(world, "suspicion", 100)
-        io = ScriptedIO(["salute", "n"])
+        io = ScriptedIO(["n"])
         next_action = Session(io=io, world=world).run()
         assert next_action is None
 
@@ -193,7 +194,7 @@ def test_ng_plus_count_increments_across_runs():
         world.visited_rooms.append("env_control")
         world.flags["ng_plus_count"] = 3  # this is the 4th run
         set_stat(world, "suspicion", 100)
-        io = ScriptedIO(["salute", "y"])
+        io = ScriptedIO(["y"])
         next_action = Session(io=io, world=world).run()
         assert next_action["ng_plus_count"] == 4
 

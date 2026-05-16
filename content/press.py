@@ -331,8 +331,16 @@ QUESTIONS = [
 
 def _question_rng(world, question_id: str) -> random.Random:
     """Per-(player, day, question) seeded RNG so unhinged outcomes are
-    deterministic per save state (and tests can predict them by fixing
-    player_name + day)."""
+    deterministic per save state.
+
+    Two reasons for the determinism:
+      1. Tests can predict outcomes by fixing player_name + day.
+      2. Save-scumming defense: if a player saves before an unhinged answer,
+         reloads, and tries the same answer again, they get the SAME outcome.
+         (To get a different roll they have to either change the day or pick
+         a different question — i.e. play differently, not just retry.) The
+         seed deliberately omits any reroll counter for this reason.
+    """
     seed = f"press:{world.player_name or 'anon'}:{world.day}:{question_id}"
     return random.Random(seed)
 
@@ -370,6 +378,22 @@ def _render_question(question: dict, round_index: int, total: int) -> str:
         f"── Round {round_index + 1} of {total} ──\n\n"
         f"{question['question']}\n\n"
         f"You can answer: honest, political, or unhinged."
+    )
+
+
+def render_current_question(world) -> str:
+    """Render the press question the player is currently facing, or '' if
+    none. Used by the session loop on resume so a save made mid-conference
+    re-prompts the player instead of leaving them at an empty prompt."""
+    if not world.flags.get("press_active"):
+        return ""
+    q = _current_question(world)
+    if q is None:
+        return ""
+    return _render_question(
+        q,
+        world.flags.get("press_round", 0),
+        len(world.flags.get("press_questions", [])),
     )
 
 

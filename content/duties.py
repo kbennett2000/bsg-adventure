@@ -166,7 +166,13 @@ def on_shift_change(world) -> str | None:
     """Called by the session when a shift advance happens. Handles:
        1) End-of-day duty rollover (after a Night → Morning Watch transition)
        2) End-of-day hunger penalty
-    Returns optional narrative text to display."""
+    Returns optional narrative text to display.
+
+    If multiple days have elapsed since the last rollover (e.g. the player
+    used `sleep` repeatedly, or a Cylon resurrection bumped the calendar),
+    we apply ONE penalty per missed day rather than collapsing them all to
+    a single hit — otherwise blasting forward through the calendar would be
+    a free way to dodge consequences."""
     # Day rollover detection: turns_this_shift was just reset to 0 by the
     # advance, so we instead use a separate sentinel — `_last_rollover_day`.
     # If the current day > the last rollover day, we just crossed a day boundary.
@@ -176,27 +182,57 @@ def on_shift_change(world) -> str | None:
         world.flags["_first_shift_change_done"] = True
         world.flags["_last_rollover_day"] = world.day
         return None
-    if world.day <= last_rollover:
+    missed_days = world.day - last_rollover
+    if missed_days <= 0:
         return None  # same day still; no rollover work
 
-    # Day rolled over. Evaluate yesterday's duty and hunger.
-    narratives: list[str] = []
+    # Day(s) rolled over. Evaluate every missed day. Day 1 uses real flags
+    # (the player may have completed duty / eaten on the most recent day
+    # they were conscious); days 2..N assume nothing was done (the player
+    # skipped past those days entirely).
+    total_duty_penalty = 0
+    total_hunger_penalty = 0
+
     yesterday_duty = world.flags.get("duty_today")
-    if yesterday_duty in CHORE_DEFS:
-        done = CHORE_DEFS[yesterday_duty]["check"](world)
-        if not done:
-            bump_stat(world, "suspicion", 5)
+    duty_done_yesterday = (
+        yesterday_duty in CHORE_DEFS
+        and CHORE_DEFS[yesterday_duty]["check"](world)
+    )
+    if yesterday_duty in CHORE_DEFS and not duty_done_yesterday:
+        total_duty_penalty += 5
+    if not world.flags.get("ate_today"):
+        total_hunger_penalty += 6
+
+    extra_missed = missed_days - 1
+    if extra_missed > 0:
+        total_duty_penalty += 5 * extra_missed
+        total_hunger_penalty += 6 * extra_missed
+
+    narratives: list[str] = []
+    if total_duty_penalty:
+        bump_stat(world, "suspicion", total_duty_penalty)
+        if missed_days > 1:
+            narratives.append(
+                "Word on the deck: you've been unreliable about your duties.\n"
+                "Several people notice. Several people always notice."
+            )
+        else:
             narratives.append(
                 "Word on the deck: you skipped your assigned duty yesterday.\n"
                 "Someone notices. Someone always notices."
             )
-    # Hunger: did you eat at the mess yesterday?
-    if not world.flags.get("ate_today"):
-        bump_stat(world, "exhaustion", 6)
-        narratives.append(
-            "You did not, in the end, eat anything yesterday. Your stomach has,\n"
-            "now, an opinion on this. Your stomach is being VOCAL about it."
-        )
+    if total_hunger_penalty:
+        bump_stat(world, "exhaustion", total_hunger_penalty)
+        if missed_days > 1:
+            narratives.append(
+                "You have not, in the end, eaten in days. Your stomach has,\n"
+                "now, several opinions about this. They are all loud."
+            )
+        else:
+            narratives.append(
+                "You did not, in the end, eat anything yesterday. Your stomach has,\n"
+                "now, an opinion on this. Your stomach is being VOCAL about it."
+            )
     # Reset per-day flags and rotate to today's duty.
     for k in (
         "duty_today", "duty_mopped_today", "duty_console_today",

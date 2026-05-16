@@ -27,6 +27,10 @@ class HandlerResult:
     advance_turn: bool = True
     quit: bool = False
     ended: bool = False  # game-over (ending triggered); session loop should exit after printing
+    # When True, the session loop should run its shift-change hooks (banner,
+    # duty rollover, hunger). Used by verbs like `sleep` that advance the
+    # watch clock without going through the per-turn auto-tick path.
+    shift_advanced: bool = False
 
 
 def trigger_ending(world: "WorldState", ending_id: str, text: str) -> HandlerResult:
@@ -402,21 +406,15 @@ def cmd_sleep(world, command, session) -> HandlerResult:
     set_stat(world, "exhaustion", 0)
     bump_stat(world, "morale", 2)
     advance_shift(world, 1)
-    # advance_shift already reset turns_this_shift. Trigger the shift-change
-    # hooks (banner, duty rollover, hunger) via the session's normal path.
     text = (
         "You climb into your rack. The mattress is, as ever, a hate crime.\n"
         "You close your eyes. You open them. You are, briefly, unsure how long\n"
         "you slept. The fluorescents say 'a while.' The fluorescents are lying."
     )
-    # Manually fire the shift-change banner since this didn't go through the
-    # auto-tick path that normally handles it.
-    if session is not None:
-        try:
-            session._on_shift_change()  # type: ignore[attr-defined]
-        except AttributeError:
-            pass
-    return HandlerResult(text=text, advance_turn=False)
+    # `shift_advanced` tells the session loop to run its shift-change hooks
+    # (banner, duty rollover, hunger) — we don't reach into private session
+    # methods from a handler.
+    return HandlerResult(text=text, advance_turn=False, shift_advanced=True)
 
 
 def cmd_save(world, command, session) -> HandlerResult:
