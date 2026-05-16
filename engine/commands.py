@@ -21,6 +21,12 @@ class HandlerResult:
     text: str = ""
     advance_turn: bool = True
     quit: bool = False
+    ended: bool = False  # game-over (ending triggered); session loop should exit after printing
+
+
+def trigger_ending(world: "WorldState", ending_id: str, text: str) -> HandlerResult:
+    world.flags["__ended__"] = ending_id
+    return HandlerResult(text=text, ended=True, advance_turn=False)
 
 
 UNKNOWN_VERB_REPLIES = [
@@ -88,19 +94,30 @@ def _resolve_any(query: str, world: WorldState):
 # ─── helpers ───────────────────────────────────────────────────────────────────
 
 
-def describe_room(world: WorldState) -> str:
+def describe_room(world: WorldState, first_visit: bool = False) -> str:
     room = ROOMS[world.current_room]
-    parts = [f"── {room.name.upper()} ──", "", room.long_desc]
+    body = room.long_desc if (first_visit or not room.short_desc) else room.short_desc
+    parts = [f"── {room.name.upper()} ──", "", body]
     room_items = items_in_room(world, room.id)
     if room_items:
         names = [ITEMS[i].name for i in room_items]
         parts += ["", "You see: " + ", ".join(names) + "."]
     if room.npcs:
-        names = [NPCS[n].name for n in room.npcs]
-        parts += ["", "Present: " + ", ".join(names) + "."]
+        names = [_visible_npc_name(world, n) for n in room.npcs if _npc_visible(world, n)]
+        if names:
+            parts += ["", "Present: " + ", ".join(names) + "."]
     if room.exits:
         parts += ["", "Exits: " + ", ".join(sorted(room.exits.keys())) + "."]
     return "\n".join(parts)
+
+
+def _npc_visible(world: WorldState, npc_id: str) -> bool:
+    """NPCs can be conditionally hidden via flags (e.g., 'npc_hidden_six')."""
+    return not world.flags.get(f"npc_hidden_{npc_id}", False)
+
+
+def _visible_npc_name(world: WorldState, npc_id: str) -> str:
+    return NPCS[npc_id].name
 
 
 # ─── handlers ──────────────────────────────────────────────────────────────────
@@ -111,8 +128,9 @@ def cmd_look(world, command, session) -> HandlerResult:
         thing = _resolve_any(command.obj, world)
         if thing is None:
             return HandlerResult(text=choice(NOTHING_HERE_REPLIES).format(obj=command.obj), advance_turn=False)
-        return HandlerResult(text=thing.description, advance_turn=False)
-    return HandlerResult(text=describe_room(world), advance_turn=False)
+        return HandlerResult(text=_resolve_description(thing, world), advance_turn=False)
+    # explicit `look` always shows the long form
+    return HandlerResult(text=describe_room(world, first_visit=True), advance_turn=False)
 
 
 def cmd_examine(world, command, session) -> HandlerResult:
@@ -127,7 +145,17 @@ def cmd_examine(world, command, session) -> HandlerResult:
     thing = _resolve_any(command.obj, world)
     if thing is None:
         return HandlerResult(text=choice(NOTHING_HERE_REPLIES).format(obj=command.obj), advance_turn=False)
-    return HandlerResult(text=thing.description, advance_turn=False)
+    desc = _resolve_description(thing, world)
+    return HandlerResult(text=desc, advance_turn=False)
+
+
+def _resolve_description(thing, world) -> str:
+    """Allow items/NPCs to provide a dynamic description via a `_dynamic_description`
+    attribute (callable taking world). Falls back to the static `description` field."""
+    dyn = getattr(thing, "_dynamic_description", None)
+    if callable(dyn):
+        return dyn(world)
+    return thing.description
 
 
 def cmd_go(world, command, session) -> HandlerResult:
@@ -140,7 +168,10 @@ def cmd_go(world, command, session) -> HandlerResult:
     new_id = room.exits[direction]
     world.current_room = new_id
     new_room = ROOMS[new_id]
-    text = describe_room(world)
+    first_visit = new_id not in world.visited_rooms
+    if first_visit:
+        world.visited_rooms.append(new_id)
+    text = describe_room(world, first_visit=first_visit)
     if new_room.on_enter:
         extra = new_room.on_enter(world)
         if extra:
@@ -185,8 +216,11 @@ def cmd_talk(world, command, session) -> HandlerResult:
         return HandlerResult(text=f"There's nobody here named \"{command.obj}\". The silence is loud.", advance_turn=False)
     if npc.on_talk is None:
         return HandlerResult(text=f"{npc.name} stares through you like glass.")
-    text = npc.on_talk(world, command.target)
-    return HandlerResult(text=text)
+    result = npc.on_talk(world, command.target)
+    # NPC dialogue can either return a plain string (normal case) or a HandlerResult (ending trigger).
+    if isinstance(result, HandlerResult):
+        return result
+    return HandlerResult(text=result)
 
 
 def cmd_use(world, command, session) -> HandlerResult:
@@ -212,7 +246,11 @@ def cmd_give(world, command, session) -> HandlerResult:
     npc = _resolve_npc(command.target, world)
     if npc is None:
         return HandlerResult(text=f"There's no \"{command.target}\" here to give it to.", advance_turn=False)
-    # Generic fallback; quest items handle specifics via NPC dialogue
+    if item.id in npc.on_give:
+        result = npc.on_give[item.id](world)
+        if isinstance(result, HandlerResult):
+            return result
+        return HandlerResult(text=result)
     return HandlerResult(text=f"You hold out the {item.name}. {npc.name} does not appear to register your existence.")
 
 
@@ -289,18 +327,40 @@ def cmd_salute(world, command, session) -> HandlerResult:
     return HandlerResult(text=choice(SALUTE_REPLIES))
 
 
-FRAK_REPLIES = [
+FRAK_LAMENTS = [
     "\"Frak,\" you mutter. It helps. A little.",
     "\"FRAK,\" you announce to the room. Nobody disagrees.",
     "You exhale. \"Frak me sideways.\" The ship hums in solidarity.",
     "\"Frak,\" you say. Then again. Then a third time, for the gods.",
     "You make eye contact with the middle distance. \"Frak.\"",
+    "\"Frak this entire frakkin' ship,\" you whisper. The ship pretends not to hear.",
+    "\"Frak,\" you say, with feeling. A coolant pipe sighs in agreement.",
+    "You consider, briefly, every life choice that led to this moment. \"Frak.\"",
+    "\"Oh for frak's SAKE,\" you tell the ceiling. The ceiling does not respond. The ceiling never responds.",
+    "\"Frak.\" You let it sit. You let it BREATHE. You move on.",
+    "You picture a beach. You picture cold beer. You picture not being here. \"Frak.\"",
+    "\"You know what? Frak.\" You don't elaborate. The bulkhead understands.",
+    "\"Frakkin' frak,\" you say, which is grammatically interesting and emotionally accurate.",
+    "You make a small noise. It is the noise of a man whose mop has bested him. \"Frak.\"",
+    "\"Frak this. Frak that. Frak THIS frakkin' ship,\" you whisper-shout into your collar.",
+    "You imagine the Cylons just getting it over with. \"Frak.\"",
+    "\"Frak,\" you say, the way the gods must have said it on day six.",
+    "You take a long breath. You let it out. \"Frak.\"",
+    "\"FRAK,\" you say. A passing officer mistakes it for an order and salutes a wall.",
+    "You count to ten. You get to four. \"Frak.\"",
+    "\"Frak,\" you say, in the tone of someone who has been saying \"frak\" since basic.",
+    "You wonder if it's still considered an interjection if it's a lifestyle. \"Frak.\"",
+    "\"Frak me, frak you, frak them, frak it,\" you conjugate quietly, like a meditation.",
+    "You look up at the lights. The lights flicker, in solidarity, or possibly because of a power surge. \"Frak.\"",
+    "\"FRAK,\" you bellow, just to hear it echo. It does not echo. The acoustics down here are a war crime.",
 ]
 
 
 def cmd_frak(world, command, session) -> HandlerResult:
-    # Free turn — does not advance world clock
-    return HandlerResult(text=choice(FRAK_REPLIES), advance_turn=False)
+    # Deterministic rotation so the player sees variety rather than repeats.
+    idx = world.flags.get("__frak_index__", 0)
+    world.flags["__frak_index__"] = idx + 1
+    return HandlerResult(text=FRAK_LAMENTS[idx % len(FRAK_LAMENTS)])
 
 
 def cmd_drink(world, command, session) -> HandlerResult:

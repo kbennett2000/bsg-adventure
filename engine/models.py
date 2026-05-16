@@ -6,12 +6,12 @@ from typing import Callable, Optional
 class Room:
     id: str
     name: str
-    short_desc: str
-    long_desc: str
+    short_desc: str            # used on revisit
+    long_desc: str             # used on first visit and explicit `look`
     exits: dict[str, str] = field(default_factory=dict)
     items: list[str] = field(default_factory=list)
     npcs: list[str] = field(default_factory=list)
-    on_enter: Optional[Callable] = None
+    on_enter: Optional[Callable] = None  # fires every entry; gate one-shots with flags
     on_examine: dict[str, str] = field(default_factory=dict)
 
 
@@ -22,6 +22,7 @@ class NPC:
     aliases: list[str] = field(default_factory=list)
     description: str = ""
     on_talk: Optional[Callable] = None
+    on_give: dict[str, Callable] = field(default_factory=dict)  # item_id → callable(world)
 
 
 @dataclass

@@ -178,3 +178,79 @@ register_item(Item(
     on_drink=canteen_on_drink,
     on_use=canteen_on_use,
 ))
+
+
+# ─── the napkin (the spine of the entire game) ────────────────────────────────
+
+
+def _has_jump_context(world) -> bool:
+    """True once the player has accumulated enough context to recognize the napkin's
+    numbers as FTL jump coordinates rather than a phone number or recipe."""
+    flags = world.flags
+    score = 0
+    if flags.get("heard_adama_jump_prep"):
+        score += 1
+    if flags.get("heard_roslin_prophecy"):
+        score += 1
+    if flags.get("heard_hadrian_jump_gossip"):
+        score += 1
+    if flags.get("heard_intercom_jump_prep"):
+        score += 1
+    return score >= 1  # any one source is enough
+
+
+def napkin_on_examine_text(world) -> str:
+    """The napkin's description morphs as the player accumulates context."""
+    if world.flags.get("realized_napkin_is_coords"):
+        return (
+            "The napkin. You can no longer un-see it. Those numbers are FTL jump "
+            "coordinates. The XO must have been working them out in here — between "
+            "sips, between hums, between whatever it is he does in stalls — and then "
+            "dropped them. The fleet's next jump. ON A FRAKKIN' NAPKIN."
+        )
+    if _has_jump_context(world):
+        # Trigger realization on this examine.
+        world.flags["realized_napkin_is_coords"] = True
+        return (
+            "A used napkin, military-grade, suspiciously absorbent. Numbers in shaky "
+            "handwriting: seven groups of digits, separated by dashes. You stare at it. "
+            "You stare at it some more.\n\n"
+            "Wait.\n\n"
+            "Wait.\n\n"
+            "That's not a phone number. That's not a recipe. Those are FTL coordinates. "
+            "That's the FORMAT. Seven-group, dash-separated, that's the frakkin' jump "
+            "vector format from your basic training. The XO was working out the fleet's "
+            "NEXT JUMP. In a TOILET STALL. On a NAPKIN. And he DROPPED IT.\n\n"
+            "You look around the room. The room does not help."
+        )
+    return (
+        "A used napkin. It has been crumpled, smoothed, crumpled again. There are "
+        "numbers on it in shaky handwriting: seven groups of digits, separated by "
+        "dashes. Probably a phone number. Probably a recipe. Probably nothing. "
+        "Probably."
+    )
+
+
+register_item(Item(
+    id="napkin",
+    name="crumpled napkin",
+    aliases=["napkin", "paper", "scrap", "numbers"],
+    description="A crumpled napkin with numbers on it.",  # overridden by on_examine when examined
+    takeable=True,
+))
+
+
+# Patch examine to be dynamic — we'll resolve it in commands.cmd_examine via a callback.
+# Simpler approach: override description via a runtime check in the examine handler.
+# We do that by attaching the dynamic text function as an attribute the handler checks.
+ITEMS_NAPKIN = None  # placeholder; resolved at import time below
+
+
+def _attach_dynamic_napkin():
+    from engine.registry import ITEMS as _ITEMS
+    _ITEMS["napkin"].description = "<dynamic>"  # marker — see commands.cmd_examine
+    _ITEMS["napkin"]._dynamic_description = napkin_on_examine_text  # type: ignore[attr-defined]
+
+
+_attach_dynamic_napkin()
+

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from . import commands, parser, save as save_module
+from . import commands, events, parser, save as save_module
 from .io import IO
 from .world import WorldState, new_world
 
@@ -16,8 +16,10 @@ class Session:
     world: WorldState
 
     def run(self) -> None:
-        # Opening room description fires on first entry via on_enter hook
-        room_text = commands.describe_room(self.world)
+        # Opening room description fires on first entry; mark visited.
+        if self.world.current_room not in self.world.visited_rooms:
+            self.world.visited_rooms.append(self.world.current_room)
+        room_text = commands.describe_room(self.world, first_visit=True)
         self.io.send(room_text)
         from .registry import ROOMS
         room = ROOMS[self.world.current_room]
@@ -38,8 +40,17 @@ class Session:
                 self.io.send(result.text)
             if result.advance_turn:
                 self.world.turn += 1
+                ambient = events.tick(self.world)
+                if ambient:
+                    self.io.send("")
+                    self.io.send(ambient)
                 if self.world.turn % AUTOSAVE_EVERY_N_TURNS == 0:
                     self._autosave_quiet()
+            if result.ended:
+                self._autosave_quiet()
+                self.io.send("")
+                self.io.send("── END ──")
+                break
             if result.quit:
                 self._autosave_quiet()
                 break

@@ -120,9 +120,13 @@ def test_unknown_verb_is_in_character():
     assert "frak" in t or "specialist" in t or "mop" in t
 
 
-def test_frak_is_free_turn():
+def test_frak_burns_a_turn_and_rotates():
     io, world = _run(["frak", "frak", "frak", "quit"])
-    assert world.turn == 0, f"frak should not advance turn, got turn={world.turn}"
+    assert world.turn == 3, f"frak should advance turn, got turn={world.turn}"
+    # Each frak should print a different lament (deterministic rotation).
+    frak_lines = [line for line in io.outputs if "frak" in line.lower() and "specialist" not in line.lower()][:3]
+    # Three frak outputs should be three different strings.
+    assert len(set(frak_lines)) >= 2, f"frak should rotate laments, got: {frak_lines}"
 
 
 def test_salute_advances_turn_and_costs_dignity():

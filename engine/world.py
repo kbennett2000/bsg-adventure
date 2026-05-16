@@ -15,6 +15,7 @@ class WorldState:
     flags: dict[str, Any] = field(default_factory=dict)
     turn: int = 0
     npc_state: dict[str, dict] = field(default_factory=dict)
+    visited_rooms: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d = asdict(self)
