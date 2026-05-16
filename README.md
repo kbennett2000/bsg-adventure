@@ -1,5 +1,25 @@
 # BSG Adventure
 
+```
+                          ╔═══════════════════╗
+                          ║░░░░░░░░░░░░░░░░░░░║
+                          ║░░░░░░░░░░░░░░░░░░░║
+                          ╚═════════╤═════════╝
+                                    │
+ ╔══════════════════════════════════╧═════════════════════════════════╗
+ ║▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓║═══▶
+ ║▓▓▓▓▓▓B A T T L E S T A R   G A L A C T I C A     B S G - 7 5▓▓▓▓▓▓▓║═══▶
+ ║▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓║═══▶
+ ╚══════════════════════════════════╤═════════════════════════════════╝
+                                    │
+                          ╔═════════╧═════════╗
+                          ║░░░░░░░░░░░░░░░░░░░║
+                          ║░░░░░░░░░░░░░░░░░░░║
+                          ╚═══════════════════╝
+
+                       A   D   V   E   N   T   U   R   E
+```
+
 A terminal-based parser text adventure. Parody of *Battlestar Galactica* (2004
 reboot) from the POV of a Specialist 3rd Class assigned to environmental systems.
 
@@ -104,6 +124,15 @@ telnet <host-ip> 4404        # also works; CRLF line endings are handled
 port-forward it. If the host has a public IP, bind to a specific LAN
 interface (`--bind 192.168.1.10`) so the listener doesn't bind to the
 WAN interface.
+
+```
+        ╔══════════════════════════╗
+        ║                          ║
+        ║    ◀──────●──────▶       ║
+        ║                          ║
+        ╚══════════════════════════╝
+               BY YOUR COMMAND.
+```
 
 ---
 

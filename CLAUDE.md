@@ -1,5 +1,17 @@
 # BSG Adventure
 
+```
+        ╔═════════════╗
+        ║░░░░░░░░░░░░░║
+        ╚══════╤══════╝
+ ╔═════════════╧══════════════╗
+ ║▓▓▓ B S G - 7 5  GALACTICA ▓║═══▶
+ ╚═════════════╤══════════════╝
+        ╔══════╧══════╗
+        ║░░░░░░░░░░░░░║
+        ╚═════════════╝
+```
+
 A terminal-based parser text adventure. Parody of Battlestar Galactica (2004 reboot)
 from the POV of a Specialist 3rd Class assigned to environmental systems. The player
 mops, reroutes coolant, and refills the XO's "water" bottle while the senior staff have

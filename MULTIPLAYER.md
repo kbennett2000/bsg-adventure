@@ -1,5 +1,17 @@
 # Multiplayer Report
 
+```
+        ╔═════════════╗               ╔═════════════╗               ╔═════════════╗
+        ║░░░░░░░░░░░░░║               ║░░░░░░░░░░░░░║               ║░░░░░░░░░░░░░║
+        ╚══════╤══════╝               ╚══════╤══════╝               ╚══════╤══════╝
+ ╔═════════════╧══════════════╗ ╔═════════════╧══════════════╗ ╔═════════════╧══════════════╗
+ ║▓▓▓▓ KARA'S GALACTICA ▓▓▓▓▓║ ║▓▓▓▓ HELO'S GALACTICA ▓▓▓▓▓║ ║▓▓▓▓ DEE'S GALACTICA ▓▓▓▓▓▓║
+ ╚═════════════╤══════════════╝ ╚═════════════╤══════════════╝ ╚═════════════╤══════════════╝
+        ╔══════╧══════╗               ╔══════╧══════╗               ╔══════╧══════╗
+        ║░░░░░░░░░░░░░║               ║░░░░░░░░░░░░░║               ║░░░░░░░░░░░░░║
+        ╚═════════════╝               ╚═════════════╝               ╚═════════════╝
+```
+
 **Scope:** LAN multi-session hosting, per the design already documented in
 [CLAUDE.md](CLAUDE.md). One host runs a server; multiple players on the home
 network each connect from their own terminal and play their own independent
@@ -262,6 +274,19 @@ For a home LAN this cap is plenty. Configurable via env var.
 ---
 
 ## Testing plan
+
+```
+              ╭───────────╮
+            ╱  ·          ╲
+           │   ·    ·      │
+           │      ╲        │
+           │       ●   ·   │
+           │      ╱        │
+           │  ·  ╱     ·   │
+            ╲  ·          ╱
+              ╰───────────╯
+                D R A D I S
+```
 
 The existing 159 tests all pass through `Session(ScriptedIO(...), world)` —
 none of them go through the network. They stay green automatically.
