@@ -10,6 +10,8 @@ from .parser import Command
 from .registry import ITEMS, NPCS, ROOMS
 from .world import (
     WorldState,
+    bump_stat,
+    get_stat,
     items_in_room,
     move_item_to_inventory,
     move_item_to_room,
@@ -97,18 +99,74 @@ def _resolve_any(query: str, world: WorldState):
 def describe_room(world: WorldState, first_visit: bool = False) -> str:
     room = ROOMS[world.current_room]
     body = room.long_desc if (first_visit or not room.short_desc) else room.short_desc
+    body = _apply_stat_filter(body, world)
     parts = [f"── {room.name.upper()} ──", "", body]
     room_items = items_in_room(world, room.id)
     if room_items:
         names = [ITEMS[i].name for i in room_items]
         parts += ["", "You see: " + ", ".join(names) + "."]
+    visible_npc_names = []
     if room.npcs:
-        names = [_visible_npc_name(world, n) for n in room.npcs if _npc_visible(world, n)]
-        if names:
-            parts += ["", "Present: " + ", ".join(names) + "."]
+        visible_npc_names = [NPCS[n].name for n in room.npcs if _npc_visible(world, n)]
+    # Exhaustion ≥ 80: hallucinate a phantom in the room
+    if get_stat(world, "exhaustion") >= 80:
+        phantom = _exhaustion_phantom(world)
+        if phantom:
+            visible_npc_names.append(phantom)
+    if visible_npc_names:
+        parts += ["", "Present: " + ", ".join(visible_npc_names) + "."]
     if room.exits:
         parts += ["", "Exits: " + ", ".join(sorted(room.exits.keys())) + "."]
     return "\n".join(parts)
+
+
+def _npc_visible(world: WorldState, npc_id: str) -> bool:
+    return not world.flags.get(f"npc_hidden_{npc_id}", False)
+
+
+def _apply_stat_filter(text: str, world: WorldState) -> str:
+    """Append loopy / cylon-creepy / paranoid commentary to a description body
+    based on the player's current stat levels. Never reveal raw numbers."""
+    suffixes = []
+    ex = get_stat(world, "exhaustion")
+    sus = get_stat(world, "suspicion")
+    cv = get_stat(world, "cylon_vibes")
+    if ex >= 80:
+        suffixes.append(
+            " The edges of everything are doing a thing. The thing is bad. You "
+            "should sit down. You should have sat down two corridors ago."
+        )
+    elif ex >= 50:
+        suffixes.append(
+            " You blink. You blink again. The room is the room. The room is still "
+            "the room. You're pretty sure."
+        )
+    if sus >= 75:
+        suffixes.append(
+            " You feel watched. There is a non-zero chance you ARE watched."
+        )
+    if cv >= 60:
+        suffixes.append(
+            " There's a song stuck in your head that you don't remember learning. "
+            "You hum a bar of it. It does not stop."
+        )
+    return text + "".join(suffixes)
+
+
+_PHANTOMS = [
+    "someone who looks like Hadrian but with the wrong number of fingers",
+    "a deckhand standing very still and facing the corner",
+    "yourself, except shorter",
+    "a Six in red, peripherally, when you turn she's gone",
+    "an officer you can't quite place, smiling without teeth",
+]
+
+
+def _exhaustion_phantom(world: WorldState) -> str | None:
+    """Pick a phantom NPC based on turn count for determinism (so saves replay sanely)."""
+    if get_stat(world, "exhaustion") < 80:
+        return None
+    return _PHANTOMS[world.turn % len(_PHANTOMS)]
 
 
 def _npc_visible(world: WorldState, npc_id: str) -> bool:
@@ -116,8 +174,6 @@ def _npc_visible(world: WorldState, npc_id: str) -> bool:
     return not world.flags.get(f"npc_hidden_{npc_id}", False)
 
 
-def _visible_npc_name(world: WorldState, npc_id: str) -> str:
-    return NPCS[npc_id].name
 
 
 # ─── handlers ──────────────────────────────────────────────────────────────────
@@ -301,8 +357,9 @@ def cmd_help(world, command, session) -> HandlerResult:
         "  eat <item>                 — eat something. Same warning.\n"
         "  wait                       — let a turn pass\n"
         "  save [slot] / load [slot]  — save your game / load it back\n"
+        "  status                     — how you're feeling, what your uniform's doing\n"
         "  salute                     — render proper respect (or don't)\n"
-        "  frak                       — express yourself. Free turn.\n"
+        "  frak                       — express yourself. Burns a turn.\n"
         "  quit                       — leave the ship\n"
     )
     return HandlerResult(text=text, advance_turn=False)
@@ -310,6 +367,83 @@ def cmd_help(world, command, session) -> HandlerResult:
 
 def cmd_quit(world, command, session) -> HandlerResult:
     return HandlerResult(text="Frak out, specialist.", quit=True, advance_turn=False)
+
+
+# ─── status (the player's vibe check) ──────────────────────────────────────────
+
+# Each entry: (predicate(stats_dict) → bool, vibe_line).
+# Evaluated in order; the FIRST match wins. Most extreme conditions go first.
+
+def _vibe_line(stats: dict[str, int]) -> str:
+    m, s, c, e = stats["morale"], stats["suspicion"], stats["cylon_vibes"], stats["exhaustion"]
+    # Crisis-level vibes
+    if s >= 90:
+        return "You feel like Tigh's been watching you. He has."
+    if e >= 90:
+        return "You feel like a wet uniform with a person in it."
+    if c >= 80:
+        return "All Along the Watchtower is stuck in your head. You don't remember ever hearing it."
+    # Severe
+    if s >= 75:
+        return "You feel like every officer you pass is filing a report about your face."
+    if c >= 60:
+        return "There's a hum behind your thoughts. It is not the ship. The ship doesn't hum in B-flat."
+    if e >= 70:
+        return "You feel like you slept on the floor in someone else's body."
+    if m <= 15:
+        return "You feel hollow in a way no algae bar can fix."
+    # Moderate
+    if m >= 80 and e < 30 and s < 30:
+        return "You feel frakking unstoppable."
+    if m >= 70 and c >= 30:
+        return "You feel weirdly into this. Whatever this is."
+    if s >= 40:
+        return "You feel like the wrong people know your name."
+    if c >= 30:
+        return "You feel observed in a way that isn't entirely uncomfortable."
+    if e >= 40:
+        return "You feel like you've been on shift for nine days. You haven't. You think."
+    if m <= 30:
+        return "You feel the specific weight of a mop you have not yet picked up."
+    # Default — mid-range on everything
+    return "You feel fine. Considering. The ship is still attached. You are still attached to the ship."
+
+
+def _uniform_state(stats: dict[str, int]) -> str:
+    e = stats["exhaustion"]
+    m = stats["morale"]
+    if e >= 80:
+        return "Your uniform has surrendered."
+    if e >= 50:
+        return "Your uniform smells like coolant, ambrosia, and giving up."
+    if m >= 70:
+        return "Your uniform is regulation enough. Probably."
+    if m <= 25:
+        return "Your uniform looks like it's been on shift longer than you have."
+    return "Your uniform is fine. You think. You haven't looked."
+
+
+def _body_verb(stats: dict[str, int]) -> str:
+    e = stats["exhaustion"]
+    if e >= 80:
+        return "You stand by leaning on something."
+    if e >= 50:
+        return "You shift your weight. Both feet are tired. Pick one."
+    if e >= 25:
+        return "You roll your shoulders. They roll back."
+    return "You stand up straight. You sit down. You stand up straight again. You are fine."
+
+
+def cmd_status(world, command, session) -> HandlerResult:
+    # Force stat init for back-compat saves
+    from .world import _ensure_stats
+    _ensure_stats(world)
+    stats = world.stats
+    vibe = _vibe_line(stats)
+    uniform = _uniform_state(stats)
+    body = _body_verb(stats)
+    text = "\n".join([vibe, uniform, body])
+    return HandlerResult(text=text, advance_turn=False)
 
 
 # ─── flavor verbs ──────────────────────────────────────────────────────────────
@@ -324,6 +458,7 @@ SALUTE_REPLIES = [
 
 def cmd_salute(world, command, session) -> HandlerResult:
     world.flags["dignity_lost"] = world.flags.get("dignity_lost", 0) + 1
+    bump_stat(world, "morale", -3)
     return HandlerResult(text=choice(SALUTE_REPLIES))
 
 
@@ -360,6 +495,7 @@ def cmd_frak(world, command, session) -> HandlerResult:
     # Deterministic rotation so the player sees variety rather than repeats.
     idx = world.flags.get("__frak_index__", 0)
     world.flags["__frak_index__"] = idx + 1
+    bump_stat(world, "morale", 2)  # catharsis
     return HandlerResult(text=FRAK_LAMENTS[idx % len(FRAK_LAMENTS)])
 
 
@@ -406,6 +542,7 @@ HANDLERS: dict[str, Callable] = {
     "frak": cmd_frak,
     "drink": cmd_drink,
     "eat": cmd_eat,
+    "status": cmd_status,
 }
 
 

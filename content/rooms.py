@@ -4,7 +4,7 @@ from random import choice
 
 from engine.models import Room
 from engine.registry import register_room
-from engine.world import move_item_to_room
+from engine.world import bump_stat, move_item_to_room, witness_once
 
 
 # ─── Environmental Control (player's bunk) ────────────────────────────────────
@@ -93,8 +93,19 @@ def corridor_c12_on_enter(world):
     candidates = [enc for enc in CORRIDOR_C12_ENCOUNTERS if enc[0] != last]
     key, text = choice(candidates)
     state["last_encounter"] = key
-    if key == "six_walks":
+    # Stat consequences for each encounter
+    if key == "tigh_staggers":
+        bump_stat(world, "suspicion", 4)
+    elif key == "starbuck_punches":
+        bump_stat(world, "morale", 2)
+    elif key == "six_walks":
         world.flags["saw_a_six"] = True
+        bump_stat(world, "cylon_vibes", 5)
+    elif key == "baltar_argues":
+        bump_stat(world, "suspicion", 3)
+        bump_stat(world, "morale", -1)
+    elif key == "apollo_mopes":
+        bump_stat(world, "morale", 1)
     return text
 
 
@@ -140,6 +151,8 @@ def head_on_enter(world):
     if world.flags.get("entered_head"):
         return None
     world.flags["entered_head"] = True
+    # First time witnessing the XO drinking in a stall is a load-bearing event.
+    witness_once(world, "witnessed_tigh_drinking", "suspicion", 10)
     return (
         "The middle stall door is closed. From inside, you can hear someone humming "
         "the Colonial Anthem off-key. Occasionally there is a long, contemplative "
@@ -304,6 +317,14 @@ def corridor_b_on_enter(world):
     candidates = [enc for enc in CORRIDOR_B_ENCOUNTERS if enc[0] != last]
     key, text = choice(candidates)
     state["last_encounter"] = key
+    if key == "six_supervisor":
+        bump_stat(world, "cylon_vibes", 8)
+    elif key == "six_distant":
+        bump_stat(world, "cylon_vibes", 3)
+    elif key == "tigh_catwalk":
+        bump_stat(world, "suspicion", 5)
+    elif key == "pilots_yelling":
+        bump_stat(world, "morale", 1)
     return text
 
 
@@ -352,6 +373,7 @@ def pilots_rec_on_enter(world):
     if world.flags.get("entered_pilots_rec"):
         return None
     world.flags["entered_pilots_rec"] = True
+    bump_stat(world, "morale", 3)  # the vibes
     return (
         "Two pilots are sobbing and making out in the corner. They will be dead by "
         "act three. You do not have time for this."
@@ -413,8 +435,13 @@ register_room(Room(
 
 def baltars_lab_on_enter(world):
     if world.flags.get("entered_baltars_lab"):
+        # Re-entry still drains morale (Baltar is exhausting to be near)
+        bump_stat(world, "morale", -1)
         return None
     world.flags["entered_baltars_lab"] = True
+    witness_once(world, "witnessed_baltar_solo_argument", "suspicion", 5)
+    bump_stat(world, "morale", -3)
+    bump_stat(world, "cylon_vibes", 2)
     return (
         "Doctor Baltar is in the middle of an argument with no one. He stops "
         "mid-sentence, looks at you, looks back at the empty air, and says — to "
@@ -519,6 +546,7 @@ register_room(Room(
 def corridor_a_on_enter(world):
     if not world.flags.get("seen_officer_country"):
         world.flags["seen_officer_country"] = True
+        bump_stat(world, "morale", 2)  # the carpet briefly delights
         return (
             "The lighting up here is better. The carpet is also better. There IS a "
             "carpet up here. You spend a long moment processing this."
@@ -624,10 +652,15 @@ def adamas_quarters_on_enter(world):
     if world.flags.get("entered_adamas_quarters"):
         return None
     world.flags["entered_adamas_quarters"] = True
+    # Witnessing the unspoken Bill-and-Saul thing is a load-bearing suspicion event.
+    witness_once(world, "witnessed_command_meeting", "suspicion", 15)
     return (
         "Colonel Tigh is already inside. Of course he is. He doesn't look at you. "
         "He looks at the model ship. The model ship does not return the look. The "
-        "model ship is small. The silence is large."
+        "model ship is small. The silence is large.\n\n"
+        "The air in here has a particular density. You should not be in here. You "
+        "are going to remember being in here for the rest of your career, however "
+        "long or short that turns out to be."
     )
 
 
@@ -691,8 +724,10 @@ register_room(Room(
 
 def brig_on_enter(world):
     if world.flags.get("entered_brig"):
+        bump_stat(world, "cylon_vibes", 2)
         return None
     world.flags["entered_brig"] = True
+    bump_stat(world, "cylon_vibes", 8)
     return (
         "There is a woman in the cell. She is tall. She is blonde. She is wearing "
         "red. She is sitting calmly. She looks up at you and smiles, slow and "
@@ -790,9 +825,11 @@ register_room(Room(
 
 
 def cic_on_enter(world):
-    world.flags["heard_intercom_jump_prep"] = True  # CIC is loud about the jump
+    world.flags["heard_intercom_jump_prep"] = True
     if not world.flags.get("entered_cic"):
         world.flags["entered_cic"] = True
+        bump_stat(world, "morale", 4)       # you snuck into CIC, that rules
+        bump_stat(world, "suspicion", 3)    # but you ARE on camera
         return (
             "An ensign at a console is saying 'JUMP PREP IN PROGRESS' into a "
             "headset for the third time. Another ensign is replotting coordinates "

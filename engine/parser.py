@@ -31,6 +31,7 @@ VERB_SYNONYMS = {
     "help": "help", "?": "help",
     "quit": "quit", "exit": "quit", "q": "quit",
     "salute": "salute",
+    "status": "status", "stat": "status", "stats": "status", "vibe": "status", "vibes": "status",
     "frak": "frak", "frack": "frak", "fuck": "frak", "shit": "frak", "damn": "frak",
     "drink": "drink", "sip": "drink", "chug": "drink",
     "eat": "eat", "bite": "eat",

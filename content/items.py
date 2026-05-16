@@ -2,7 +2,7 @@
 
 from engine.models import Item
 from engine.registry import register_item
-from engine.world import move_item_to_room
+from engine.world import bump_stat, move_item_to_room
 
 
 # ─── algae bar ─────────────────────────────────────────────────────────────────
@@ -12,12 +12,13 @@ def algae_bar_on_eat(world):
     if world.flags.get("algae_bar_eaten"):
         return "You already ate it. There is no more bar. There is only memory."
     world.flags["algae_bar_eaten"] = True
-    # Bar is now gone from inventory/room
     if "algae_bar" in world.inventory:
         world.inventory.remove("algae_bar")
     for items in world.room_items.values():
         if "algae_bar" in items:
             items.remove("algae_bar")
+    bump_stat(world, "morale", -2)         # algae is depressing
+    bump_stat(world, "exhaustion", -3)     # but it IS nourishment
     return (
         "You finish the algae bar. It tastes exactly like the inside of a vent — which "
         "is something you happen to be an expert on. Nutritionally adequate. Spiritually, a war crime."
@@ -42,6 +43,8 @@ register_item(Item(
 
 
 def mop_on_use(world):
+    bump_stat(world, "morale", -3)         # actual work tanks morale
+    bump_stat(world, "exhaustion", 4)       # and it's tiring
     return (
         "You give the deck a professional once-over. It looks marginally less haunted. "
         "Somewhere, an officer feels vaguely better about themselves and does not know why."
@@ -72,13 +75,16 @@ def locker_on_use(world):
             "which is more than you can say for most things on this ship."
         )
     world.flags["opened_locker"] = True
+    # Looking at the dent without a story bumps cylon-vibes (deja vu).
+    bump_stat(world, "cylon_vibes", 2)
     return (
         "You wrench the locker open. Inside:\n"
         "  - one (1) regulation cap, worn.\n"
         "  - one (1) half-finished letter to your mom you've been working on for nine months.\n"
         "  - one (1) framed picture of a dog named Captain Frakkin' Adorable.\n"
         "  - a small, suspicious nutrient paste packet from 'before the cylons came back'.\n"
-        "You close the locker. The contents do not require you right now."
+        "You close the locker. The third dent in the door — the one without a story — "
+        "looks somehow familiar in a way it shouldn't. You move on."
     )
 
 
@@ -101,6 +107,8 @@ register_item(Item(
 
 def console_on_use(world):
     world.flags["noticed_anomaly"] = True
+    bump_stat(world, "morale", -2)          # doing your actual job
+    bump_stat(world, "exhaustion", 2)
     return (
         "You tap a key. The screen scrolls:\n\n"
         "    COOLANT FLOW: NOMINAL\n"
@@ -148,9 +156,14 @@ register_item(Item(
 
 def canteen_on_drink(world):
     if world.flags.get("canteen_filled"):
+        bump_stat(world, "morale", 5)
+        bump_stat(world, "suspicion", 8)    # drinking the XO's stash on duty
+        bump_stat(world, "exhaustion", -5)
         return (
             "You unscrew the cap. The fumes alone make your eyes water and your career "
-            "flash before them. You screw the cap back on. The XO would frakkin' space you."
+            "flash before them. You take a sip anyway, because you have made it this "
+            "far on bad choices and you are not about to stop now. It burns. It also, "
+            "weirdly, helps."
         )
     return (
         "You unscrew the cap and tilt it back. It's empty. Of course it's empty. You're "

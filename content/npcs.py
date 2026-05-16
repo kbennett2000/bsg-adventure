@@ -3,7 +3,7 @@
 from engine.commands import HandlerResult, trigger_ending
 from engine.models import NPC
 from engine.registry import register_npc
-from engine.world import move_item_to_inventory, move_item_to_room
+from engine.world import bump_stat, get_stat, move_item_to_inventory, move_item_to_room
 
 
 # ─── Colonel Tigh ──────────────────────────────────────────────────────────────
@@ -19,9 +19,11 @@ TIGH_WRONG_NAMES = [
     "you",
 ]
 
-# Topics that, asked of Tigh, raise his suspicion that the player knows something
-# they shouldn't. At 3+, he spaces them.
+# Topics that, asked of Tigh, raise the player's global SUSPICION stat. At 75+,
+# he spaces them next time they talk.
 TIGH_DANGER_TOPICS = {"flask", "water", "adama", "bill", "commander", "meeting", "meetings", "quarters"}
+TIGH_SUSPICION_BUMP = 25
+TIGH_SPACE_THRESHOLD = 75
 
 
 def _tigh_next_wrong_name(world) -> str:
@@ -31,15 +33,8 @@ def _tigh_next_wrong_name(world) -> str:
     return TIGH_WRONG_NAMES[idx % len(TIGH_WRONG_NAMES)]
 
 
-def _tigh_bump_suspicion(world, amount: int = 1) -> int:
-    state = world.npc_state.setdefault("tigh", {})
-    new = state.get("suspicion", 0) + amount
-    state["suspicion"] = new
-    return new
-
-
 def _tigh_should_space(world) -> bool:
-    return world.npc_state.get("tigh", {}).get("suspicion", 0) >= 3
+    return get_stat(world, "suspicion") >= TIGH_SPACE_THRESHOLD
 
 
 def _tigh_spaced_ending(world) -> HandlerResult:
@@ -174,21 +169,22 @@ TIGH_TOPICS = {
 
 
 def tigh_on_talk(world, topic):
-    # If suspicion is already maxed and player keeps talking, fire the ending.
     if _tigh_should_space(world):
         return _tigh_spaced_ending(world)
 
     if topic is None:
+        bump_stat(world, "morale", -2)  # he's a lot
         return _tigh_give_quest(world)
 
-    # Sensitive topics bump his suspicion meter.
     topic_lower = topic.lower()
     if any(danger in topic_lower or topic_lower in danger for danger in TIGH_DANGER_TOPICS):
-        _tigh_bump_suspicion(world, 1)
+        bump_stat(world, "suspicion", TIGH_SUSPICION_BUMP)
+        # Check threshold immediately so a 4th sensitive question doesn't get a chatty reply.
+        if _tigh_should_space(world):
+            return _tigh_spaced_ending(world)
 
     for key, response in TIGH_TOPICS.items():
         if topic == key or key in topic or topic in key:
-            # If asking this nudged him over, the next conversation will trigger spacing.
             return response
 
     return (
@@ -226,6 +222,7 @@ HADRIAN_RUMORS = [
 
 def hadrian_on_talk(world, topic):
     state = world.npc_state.setdefault("hadrian", {"rumor_index": 0})
+    bump_stat(world, "morale", 2)  # fraternizing always helps
 
     if topic in ("self", "name", "hadrian"):
         return (
@@ -366,17 +363,48 @@ def _adama_hero_ending(world) -> HandlerResult:
 
 def _adama_receive_napkin(world):
     if not world.flags.get("realized_napkin_is_coords"):
-        # He hands it back. The player hasn't figured it out yet.
         return (
             "Admiral Adama takes the napkin between two fingers. He squints at it. "
             "He turns it over. He hands it back to you without comment. 'Specialist. "
             "Some napkins are just napkins.' He turns away. You are dismissed without "
             "having been acknowledged."
         )
+    # Stat gates: a suspicious specialist doesn't get the win; an exhausted one collapses.
+    suspicion = get_stat(world, "suspicion")
+    exhaustion = get_stat(world, "exhaustion")
+    if suspicion >= 75:
+        return trigger_ending(
+            world,
+            "spaced",
+            "You hold out the napkin.\n\n"
+            "Admiral Adama looks at it. He looks at you. He looks, very deliberately,\n"
+            "across CIC, where an MP is standing very still. He nods, just once. The\n"
+            "MP starts walking. They have somehow always been here.\n\n"
+            "'Take whatever this is,' Adama says, handing the napkin away without\n"
+            "looking, 'to the XO. With my compliments. And take the specialist with\n"
+            "you.'\n\n"
+            "The MPs are professional. Tigh is, on the way, almost apologetic. The\n"
+            "airlock is short. The ceremony is shorter.\n\n"
+            "── ENDING: SPACED (THEY DIDN'T TRUST YOU) ──"
+        )
+    if exhaustion >= 80:
+        # Player faints; napkin is lost in the shuffle; force collapse-style outcome.
+        return (
+            "You hold out the napkin. Or you try to. Your arm is heavier than your "
+            "arm has any business being. The napkin slips. The napkin lands. The "
+            "deck rises to meet you with the specific patience of a deck that has "
+            "met a lot of specialists this way.\n\n"
+            "Somewhere very far away, an ensign picks up the napkin and frowns at "
+            "it. 'Sir, this is a — this is a recipe.'\n\n"
+            "You will wake up in sickbay. The fleet will jump without you. You will "
+            "be fine. Probably."
+        )
     return _adama_hero_ending(world)
 
 
 def adama_on_talk(world, topic):
+    bump_stat(world, "morale", -2)  # standing at attention takes it out of you
+
     if topic is None:
         return (
             "Admiral Adama turns, slowly, like a turret. He fixes you with a look "
@@ -464,6 +492,7 @@ def _starbuck_rotate_mood(world):
 
 
 def starbuck_on_talk(world, topic):
+    bump_stat(world, "morale", 4)
     if topic is None:
         mood = _starbuck_rotate_mood(world)
         if mood == "fight":
@@ -490,6 +519,7 @@ def starbuck_on_talk(world, topic):
     topic_lower = topic.lower()
 
     if topic_lower in ("triad", "cards"):
+        bump_stat(world, "morale", 5)
         return (
             "'Sit down.' She deals. The cards come out crooked because she shuffles\n"
             "like she's beating somebody up. Three rounds in, she discovers you have\n"
@@ -500,6 +530,8 @@ def starbuck_on_talk(world, topic):
         )
 
     if topic_lower in ("arm wrestling", "arm", "wrestle", "wrestling"):
+        bump_stat(world, "morale", 3)
+        bump_stat(world, "exhaustion", 5)  # she dislocates something
         return (
             "She slams her elbow on the table. You slam yours. You make contact. The\n"
             "fight lasts approximately one half of one second. She does not break a\n"
@@ -508,6 +540,7 @@ def starbuck_on_talk(world, topic):
         )
 
     if topic_lower in ("making out", "make out", "kiss", "kissing"):
+        bump_stat(world, "morale", 10)
         return (
             "She raises an eyebrow. She raises THE eyebrow. From across the room,\n"
             "Apollo makes a noise that is half whimper and half wedding vow.\n\n"
@@ -577,6 +610,7 @@ def _apollo_next_memory(world) -> str:
 
 
 def apollo_on_talk(world, topic):
+    bump_stat(world, "morale", 3)  # fraternizing
     if topic is None:
         memory = _apollo_next_memory(world)
         return (
@@ -667,6 +701,8 @@ def _baltar_play_along(world):
     state["paranoia"] += 1
     state["co_conspirator"] = True
     world.flags["baltar_thinks_you_see_her"] = True
+    bump_stat(world, "suspicion", 8)
+    bump_stat(world, "cylon_vibes", 12)
     return (
         "Baltar's face lights up like a flare. He grabs you by both shoulders.\n\n"
         "'You can see her?! YOU CAN SEE HER!? OH thank the GODS. OH this changes —\n"
@@ -684,6 +720,8 @@ def _baltar_call_out(world):
     state = world.npc_state.setdefault("baltar", {"paranoia": 0, "co_conspirator": False})
     state["paranoia"] += 2
     world.flags["baltar_thinks_you_know"] = True
+    bump_stat(world, "suspicion", 12)
+    bump_stat(world, "morale", -3)
     return (
         "Baltar's face becomes a very calm, very horrible mask. He sets down the\n"
         "tablet. He approaches you with the specific bonhomie of a man who is about\n"
@@ -701,6 +739,7 @@ def _baltar_call_out(world):
 
 
 def baltar_on_talk(world, topic):
+    bump_stat(world, "morale", -2)  # he is exhausting
     if topic is None:
         return (
             "Baltar startles, recovers, becomes very smooth. He had been mid-sentence\n"
@@ -777,14 +816,11 @@ register_npc(NPC(
 # ─── Number Six ────────────────────────────────────────────────────────────────
 
 
-def _six_increment_entanglement(world, n: int = 1):
-    state = world.npc_state.setdefault("six", {"entanglement": 0})
-    state["entanglement"] = state.get("entanglement", 0) + n
-    return state["entanglement"]
+SIX_VIBE_THRESHOLD = 75
 
 
 def _six_check_ending(world):
-    if world.npc_state.get("six", {}).get("entanglement", 0) >= 3:
+    if get_stat(world, "cylon_vibes") >= SIX_VIBE_THRESHOLD:
         return _six_cylon_love_triangle_ending(world)
     return None
 
@@ -827,16 +863,30 @@ SIX_REVEAL_HINTS = [
 
 
 def six_on_talk(world, topic):
+    # Check first — maybe a prior interaction already pushed us over.
     ending = _six_check_ending(world)
     if ending is not None:
         return ending
 
+    # All Six interactions bump cylon_vibes; god/love/cylon bump harder.
+    topic_lower = (topic or "").lower()
+    if topic_lower in ("god", "gods", "faith", "love"):
+        bump_stat(world, "cylon_vibes", 35)
+    elif topic_lower in ("cylon", "toaster", "machine", "frakkin' toaster"):
+        bump_stat(world, "cylon_vibes", 30)
+    else:
+        bump_stat(world, "cylon_vibes", 25)
+
+    # Re-check after the bump; this is what triggers the ending on the talk that pushes you over.
+    ending = _six_check_ending(world)
+    if ending is not None:
+        return ending
+
+    cv = get_stat(world, "cylon_vibes")
+
     if topic is None:
-        bump = _six_increment_entanglement(world, 1)
-        ending = _six_check_ending(world)
-        if ending is not None:
-            return ending
-        hint = SIX_REVEAL_HINTS[(bump - 1) % len(SIX_REVEAL_HINTS)] if bump >= 2 else ""
+        hint_idx = max(0, (cv // 20) - 1)
+        hint = SIX_REVEAL_HINTS[hint_idx % len(SIX_REVEAL_HINTS)] if cv >= 40 else ""
         text = (
             "She turns to face you fully. The corridor narrows. The air does not\n"
             "exactly heat, but it becomes... attentive.\n\n"
@@ -849,17 +899,13 @@ def six_on_talk(world, topic):
             text += "\n\n" + hint
         return text
 
-    topic_lower = topic.lower()
-
     if topic_lower in ("self", "name"):
-        bump = _six_increment_entanglement(world, 1)
         return (
             "She smiles. The smile is too patient. 'You don't need my name,\n"
             "specialist. You haven't needed my name. You've always known.'"
         )
 
     if topic_lower in ("cylon", "toaster", "machine", "frakkin' toaster"):
-        bump = _six_increment_entanglement(world, 1)
         return (
             "She tilts her head. 'Is that what you think I am?' She does not look\n"
             "offended. She looks delighted. 'That would be... convenient, wouldn't\n"
@@ -867,7 +913,6 @@ def six_on_talk(world, topic):
         )
 
     if topic_lower in ("supervisor", "shift", "deck", "twelve"):
-        bump = _six_increment_entanglement(world, 1)
         return (
             "'I am your shift supervisor. I am also other things. The first is\n"
             "uncomplicated. The rest of it, you'll work out.'"
@@ -880,7 +925,6 @@ def six_on_talk(world, topic):
         )
 
     if topic_lower in ("god", "gods", "faith", "love"):
-        bump = _six_increment_entanglement(world, 2)
         return (
             "Her face becomes very still. Very lit. 'God is love, specialist.\n"
             "Love is everything. Everything is becoming. I think you and I are\n"
@@ -918,6 +962,8 @@ register_npc(NPC(
 
 def roslin_on_talk(world, topic):
     world.flags["heard_roslin_prophecy"] = True
+    bump_stat(world, "suspicion", 3)   # being seen with the President draws attention
+    bump_stat(world, "morale", 1)       # she's nice enough
 
     if topic is None:
         return (

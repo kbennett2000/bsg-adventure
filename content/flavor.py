@@ -1,6 +1,7 @@
 """Ambient events that fire between turns at low probability."""
 
 from engine.events import register_ambient
+from engine.world import bump_stat
 
 
 AMBIENT_LINES = [
@@ -32,5 +33,25 @@ AMBIENT_LINES = [
 ]
 
 
+# Callable ambient: music nobody else hears, plus a stat bump.
+def _watchtower(world):
+    bump_stat(world, "cylon_vibes", 6)
+    return (
+        "A melody surfaces in the back of your head. Four notes. Then four more. "
+        "You don't recognize it. You don't recognize ever NOT recognizing it. The "
+        "melody continues for several seconds. Somewhere on the ship, you feel "
+        "absolutely certain, three other people are humming it right now."
+    )
+
+
+def _all_along(world):
+    bump_stat(world, "cylon_vibes", 5)
+    return (
+        "You catch yourself humming. Something you don't know. You stop. You start "
+        "again. You stop. It is unclear which of these is voluntary."
+    )
+
+
 def install() -> None:
     register_ambient(*AMBIENT_LINES)
+    register_ambient(_watchtower, _all_along)
