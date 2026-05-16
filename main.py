@@ -12,10 +12,21 @@ from engine.session import Session
 from engine.world import new_world
 
 
-# Names that would collide with the quit-verb sentinel. Reserved so a player
-# can't be named "quit" (and a network disconnect at the name prompt can't
-# silently create a player called "quit").
-RESERVED_NAMES = {"quit", "exit", "q"}
+# Two classes of reserved input at the name prompt:
+#
+#   EXIT_TOKENS   — `quit`, `exit`, `q`, plus the LocalIO EOF sentinel. These
+#                   should END the session, not create a player with that name.
+#                   (Without this, a stdin-EOF used to silently create a save
+#                   dir called `quit/`.)
+#
+#   META_TOKENS   — verbs that are valid IN-GAME but make no sense as a name.
+#                   The user who types `load 0` here is trying to pick a save
+#                   slot, NOT name themselves. Without this guard, typing
+#                   `load` here used to create a player literally named `load`
+#                   (saves/load/auto.json) instead of loading a slot.
+EXIT_TOKENS = {"quit", "exit", "q"}
+META_TOKENS = {"load", "save", "help", "hint"}
+RESERVED_NAMES = EXIT_TOKENS | META_TOKENS
 
 
 TITLE_ART = """
@@ -77,11 +88,26 @@ def prompt_for_name(io) -> str:
         if not raw:
             io.send("INTERCOM: I CAN'T HEAR YOU OVER THE FRAKKIN' VENTS, TRY AGAIN.")
             continue
-        if raw.lower() in RESERVED_NAMES:
+        # First token only — "load 0" is taken as a `load` attempt, not a
+        # name "load 0" (which would fail the safe-name regex anyway). This
+        # also lets us reject `load <anything>` at the name prompt.
+        first = raw.split()[0].lower()
+        if first in EXIT_TOKENS:
             # LocalIO returns 'quit' on stdin EOF — that's an intentional exit.
             # A live player typing 'quit' at the name prompt also wants to exit.
             # Either way: don't create a player with this name.
             raise Disconnected("user exited at name prompt")
+        if first in META_TOKENS:
+            # The user is trying to use an in-game verb at the name prompt.
+            # Tell them how to actually load a slot instead of silently
+            # creating a player named after the verb.
+            io.send(
+                "INTERCOM: THAT'S AN IN-GAME COMMAND, SPECIALIST, NOT A NAME.\n"
+                "INTERCOM: TYPE THE NAME YOU PLAYED UNDER LAST TIME. IF YOU HAD\n"
+                "          A SAVE, THE AUTOSAVE WILL RESUME AUTOMATICALLY.\n"
+                "INTERCOM: ONCE ABOARD, USE 'load <slot>' TO PICK A SPECIFIC SLOT."
+            )
+            continue
         if not is_safe_name(raw):
             io.send("INTERCOM: NAME MUST BE LETTERS, NUMBERS, OR UNDERSCORES, UP TO 32 CHARACTERS, SPECIALIST. TRY AGAIN.")
             continue

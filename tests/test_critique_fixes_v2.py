@@ -332,6 +332,61 @@ def test_press_state_cleared_on_cylon_resurrection():
             )
 
 
+# ─── Bug 8 (follow-up): meta verbs at the name prompt ───────────────────────
+
+
+def test_prompt_for_name_rejects_load_as_name():
+    """Typing 'load' at the name prompt used to create a player literally
+    named 'load' (saves/load/auto.json), because the only reserved names
+    were the exit-tokens. Now `load`, `save`, `help`, and `hint` are
+    rejected with a helpful message and the user is re-prompted."""
+    from engine.io import ScriptedIO
+    from main import prompt_for_name
+
+    for meta in ("load", "save", "help", "hint",
+                 "LOAD", "Save", "HELP", "Hint",
+                 "load 0", "load 1 ", "save default", "help me"):
+        # Provide a real name as the second turn so prompt_for_name returns.
+        io = ScriptedIO([meta, "ValidPlayer"])
+        result = prompt_for_name(io)
+        assert result == "ValidPlayer", (
+            f"prompt_for_name accepted {meta!r} as a name (returned {result!r})"
+        )
+        # The intercom warning should have been printed.
+        assert "IN-GAME COMMAND" in io.transcript, (
+            f"expected the in-game-command rejection message after typing {meta!r}; "
+            f"got transcript:\n{io.transcript[:600]}"
+        )
+
+
+def test_prompt_for_name_still_rejects_quit_as_disconnect():
+    """The pre-existing exit-token behavior is unchanged: `quit` at the
+    name prompt raises Disconnected rather than re-prompting."""
+    from engine.io import Disconnected, ScriptedIO
+    from main import prompt_for_name
+
+    for exit_token in ("quit", "exit", "q", "QUIT"):
+        io = ScriptedIO([exit_token])
+        try:
+            prompt_for_name(io)
+        except Disconnected:
+            continue
+        raise AssertionError(f"prompt_for_name accepted {exit_token!r}")
+
+
+def test_prompt_for_name_accepts_normal_names():
+    """Sanity: legitimate names containing letters and digits still work,
+    including names that START with a letter sequence that LOOKS like a
+    verb but isn't reserved (e.g. 'looker', 'savedrop' — neither is in
+    META_TOKENS, both should be accepted)."""
+    from engine.io import ScriptedIO
+    from main import prompt_for_name
+
+    for name in ("DickNBallz", "Kara_Thrace", "Apollo7", "Six", "looker", "saver"):
+        io = ScriptedIO([name])
+        assert prompt_for_name(io) == name
+
+
 def test_clear_press_state_is_idempotent():
     """The public teardown must be safe to call multiple times on a world
     that no longer has any press flags."""
