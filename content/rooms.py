@@ -135,12 +135,19 @@ def corridor_c12_on_enter(world):
     return text
 
 
+def _corridor_c12_roster(world):
+    """The duty roster posted on the bulkhead. Examining it shows today's
+    chore. Discoverability for the central job tension."""
+    from content.duties import render_roster_text
+    return render_roster_text(world)
+
+
 register_room(Room(
     id="corridor_c12",
     name="Corridor C-12",
     short_desc=(
         "Corridor C-12. The deck-five junction. Mess to the north, head to the "
-        "east, your bunk to the west."
+        "east, your bunk to the west. The DUTY ROSTER is posted on the bulkhead."
     ),
     long_desc=(
         "Corridor C-12. A grey hallway with grey lighting illuminating grey people "
@@ -150,7 +157,8 @@ register_room(Room(
         "that says 'AT YOUR OWN FRAKKIN' RISK.' Beneath the sign, someone has scratched "
         "HELO + SHARON = ?? into the paint. Beneath THAT, in a different hand, the "
         "SHARON has been struck through and replaced with YEARS OF QUESTIONS, which "
-        "has, in a third hand, been underlined."
+        "has, in a third hand, been underlined. Next to it, a fresh xerographed sheet "
+        "of paper reads DUTY ROSTER and lists, in regulation block, today's chores."
     ),
     exits={
         "west": "env_control",
@@ -169,6 +177,12 @@ register_room(Room(
         "tigh": "Already gone. The fire extinguisher he winked at looks vaguely flattered.",
         "baltar": "Already gone. He took the empty air with him.",
         "apollo": "Already gone. The faint smell of cologne and bad decisions lingers.",
+        "roster": _corridor_c12_roster,
+        "duty roster": _corridor_c12_roster,
+        "duty": _corridor_c12_roster,
+        "paper": _corridor_c12_roster,
+        "sheet": _corridor_c12_roster,
+        "bulletin": _corridor_c12_roster,
     },
 ))
 
@@ -211,8 +225,12 @@ def head_examine_floor(world):
     )
 
 
+NIGHT_SHIFT = 4   # See engine.world.SHIFT_NAMES
+
+
 def head_examine_loose_tile(world):
-    """Find Tigh's flask under a loose tile (stash quest bottle #1)."""
+    """Find Tigh's flask under a loose tile (stash quest bottle #1).
+    Findable only at Night — Tigh is passed out and can't catch you."""
     if world.flags.get("found_flask"):
         return (
             "The loose tile is back where it was. The cavity beneath it is empty.\n"
@@ -221,6 +239,14 @@ def head_examine_loose_tile(world):
         )
     if "flask" in world.inventory or "flask" in world.room_items.get("head_deck_5", []):
         return "The loose tile is loose. You can see down into the cavity. It is empty now."
+    if world.shift != NIGHT_SHIFT:
+        # Tigh is awake — he'd notice you fishing under tiles. No reveal.
+        return (
+            "A perfectly normal floor tile. Slightly loose, maybe. You start to\n"
+            "crouch and a low, sober throat-clearing comes from the middle stall.\n"
+            "You straighten up. You move on. You will not be doing this with the\n"
+            "XO awake."
+        )
     world.flags["found_flask"] = True
     bump_stat(world, "suspicion", 5)
     move_item_to_room(world, "flask", "head_deck_5")
@@ -228,8 +254,8 @@ def head_examine_loose_tile(world):
         "One of the tiles near the middle stall is loose. You crouch. You pry it up\n"
         "with the edge of your boot. Underneath, in a cavity that should not exist:\n"
         "a hip flask. Monogrammed S.T.\n\n"
-        "From the stall, the humming pauses. The humming resumes. The XO does not\n"
-        "appear to have noticed. The XO has almost certainly noticed."
+        "From the stall, the snoring continues, even and unbroken. The XO is, by\n"
+        "his own loud testimony, asleep."
     )
 
 
@@ -300,37 +326,81 @@ MESS_ENCOUNTERS = [
 ]
 
 
+MESS_OPEN_SHIFTS = (0, 2)   # Morning Watch, Afternoon (per spec)
+
+
+def _mess_is_open(world) -> bool:
+    return world.shift in MESS_OPEN_SHIFTS
+
+
 def mess_hall_on_enter(world):
     if not world.flags.get("seen_mess_hall_jump_gossip"):
         world.flags["seen_mess_hall_jump_gossip"] = True
-        world.flags["heard_hadrian_jump_gossip"] = True  # ambient gossip counts toward jump context
-        return (
+        world.flags["heard_hadrian_jump_gossip"] = True
+        base = (
             "Two specialists at the next table are arguing about the next jump. "
             "'Tomorrow.' 'No, today.' 'I heard tonight.' 'It's never when they say.' "
             "They notice you listening, lower their voices, and keep arguing."
         )
-    return choice(MESS_ENCOUNTERS)
+    else:
+        base = choice(MESS_ENCOUNTERS)
+    if not _mess_is_open(world):
+        base += (
+            "\n\nThe serving line is dark. The kitchen is shuttered. The chairs are "
+            "stacked. Mess is closed this watch — comes back open at Morning Watch."
+        )
+    return base
+
+
+def _mess_eat(world):
+    """The hunger-mechanic entrypoint. Eat a tray; sets ate_today flag."""
+    if not _mess_is_open(world):
+        return (
+            "The serving line is dark, specialist. No food this watch. Try Morning\n"
+            "Watch or Afternoon. (Your stomach disagrees with the schedule but the\n"
+            "schedule does not care about your stomach.)"
+        )
+    if world.flags.get("ate_today"):
+        return (
+            "You already ate today. The lasagna remembers. The lasagna will not have\n"
+            "forgotten you between now and tomorrow."
+        )
+    world.flags["ate_today"] = True
+    bump_stat(world, "morale", -1)        # algae lasagna is a vibe
+    bump_stat(world, "exhaustion", -3)    # but a vibe with calories
+    return (
+        "You take a tray. You sit. You eat. The protein is, today, the same protein\n"
+        "as yesterday's protein, which is the same protein as the day before's. The\n"
+        "cook makes eye contact while you chew. The eye contact is the seasoning."
+    )
 
 
 def mess_hall_examine_kitchen(world):
-    """Looking at the kitchen reveals the stash thermos hidden behind serving trays."""
+    """Looking at the kitchen reveals the stash thermos hidden behind serving
+    trays. Findable only at Night, when the cook is gone and the kitchen is
+    unattended."""
     if world.flags.get("found_stash_mess"):
         return (
-            "The kitchen behind the serving line. The cook is not in there at the\n"
-            "moment. The cook will be back in approximately twenty seconds. The\n"
-            "thermos slot you saw earlier is empty. You should leave."
+            "The kitchen behind the serving line. The thermos slot you saw earlier\n"
+            "is empty. You should leave."
         )
     if "stash_bottle_mess" in world.inventory or "stash_bottle_mess" in world.room_items.get("mess_hall", []):
-        return "The cook has, you note, been watching the serving line more carefully than usual."
+        return "Already disturbed. You should not be in here."
+    if world.shift != NIGHT_SHIFT:
+        return (
+            "The kitchen behind the serving line. The cook is RIGHT THERE. The cook\n"
+            "is watching you. The cook is, somehow, also stirring the vat at the\n"
+            "same time. You will not be rooting around the kitchen while the cook\n"
+            "is in residence."
+        )
     world.flags["found_stash_mess"] = True
     bump_stat(world, "suspicion", 5)
     move_item_to_room(world, "stash_bottle_mess", "mess_hall")
     return (
-        "The kitchen behind the serving line. The cook is not in there at the\n"
-        "moment. You can see, partially hidden behind a stack of trays, a thermos\n"
-        "labelled COFFEE — DO NOT DRINK — TIGH in three different handwritings.\n\n"
-        "You could, in theory, simply walk up and take it. You have approximately\n"
-        "twenty seconds before the cook returns."
+        "The kitchen behind the serving line. The cook is gone — off-shift, off-\n"
+        "deck, off-anywhere-you-might-find-them. The kitchen is dark and unmonitored.\n"
+        "Partially hidden behind a stack of trays: a thermos labelled COFFEE — DO\n"
+        "NOT DRINK — TIGH in three different handwritings."
     )
 
 
@@ -354,7 +424,7 @@ register_room(Room(
         "south": "corridor_c12",
         "north": "corridor_b",
     },
-    items=[],
+    items=["tray"],
     npcs=["cook"],
     on_enter=mess_hall_on_enter,
     on_examine={
@@ -624,28 +694,31 @@ def hangar_on_enter(world):
 
 
 def hangar_examine_raptor(world):
-    """The hangar stash bottle is hidden in a Raptor's gun port."""
+    """The hangar stash bottle is hidden in a Raptor's gun port. Night only."""
     if world.flags.get("found_stash_hangar"):
         return (
             "A Raptor. Squat, ugly, beloved. The gun-port slot you stashed nothing in\n"
-            "is, conspicuously, empty. Boomer has been watching you since you arrived.\n"
-            "She has not, technically, said anything. She has not, technically, looked\n"
-            "away."
+            "is, conspicuously, empty."
         )
     if "stash_bottle_hangar" in world.inventory or "stash_bottle_hangar" in world.room_items.get("hangar_deck", []):
         return "A Raptor. Squat, ugly, beloved. Recently disturbed by someone. Probably you."
+    if world.shift != NIGHT_SHIFT:
+        return (
+            "A Raptor. Squat, ugly, beloved. Someone has spray-painted 'LUCKY' on\n"
+            "the nose. The deck is busy. Deckhands EVERYWHERE. You will not be\n"
+            "fishing around in a gun mount during shift. Try off-hours."
+        )
     world.flags["found_stash_hangar"] = True
     bump_stat(world, "suspicion", 5)
     move_item_to_room(world, "stash_bottle_hangar", "hangar_deck")
     return (
         "A Raptor. Squat, ugly, beloved. Someone has spray-painted 'LUCKY' on the\n"
-        "nose. The paint is fresh.\n\n"
+        "nose. The paint is fresh. The hangar is quiet at this hour — most of the\n"
+        "deckhands are off-shift.\n\n"
         "You walk around the back of it. Tucked into the port-side gun mount — a\n"
         "place where no munition or instrument has any business being — is a\n"
         "regulation grease can. Heavier than a grease can has any business being.\n"
-        "It sloshes wrong.\n\n"
-        "Boomer, across the deck, does not look at you. She also does not stop\n"
-        "looking at you. Both facts coexist."
+        "It sloshes wrong."
     )
 
 
@@ -963,6 +1036,19 @@ def brig_on_enter(world):
     )
 
 
+def _brig_examine_cell(world):
+    """Examining the cell may fulfill the 'escort prisoner' duty for the day."""
+    base = "The cell. Reinforced. The reinforcement looks decorative."
+    try:
+        from content.duties import on_brig_escort
+        extra = on_brig_escort(world)
+        if extra:
+            return base + "\n\n" + extra
+    except Exception:
+        pass
+    return base
+
+
 register_room(Room(
     id="brig",
     name="The Brig",
@@ -988,7 +1074,7 @@ register_room(Room(
     npcs=[],
     on_enter=brig_on_enter,
     on_examine={
-        "cell": "The cell. Reinforced. The reinforcement looks decorative.",
+        "cell": _brig_examine_cell,
         "woman": "Tall. Blonde. Red. Smiling. You can't tell if you're being assessed for a date or for parts.",
         "blonde": "Smiling. Holding eye contact. You blink first. She wins.",
         "guard": "The guard. He has the eyes of a man who has stopped praying.",

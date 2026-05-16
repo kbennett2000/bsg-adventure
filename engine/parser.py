@@ -26,6 +26,7 @@ VERB_SYNONYMS = {
     "talk": "talk", "speak": "talk", "ask": "talk",
     "inventory": "inventory", "i": "inventory", "inv": "inventory",
     "wait": "wait", "z": "wait",
+    "sleep": "sleep", "rest": "sleep", "nap": "sleep",
     "save": "save",
     "load": "load", "restore": "load",
     "help": "help", "?": "help",

@@ -26,6 +26,7 @@ def test_stash_flask_under_loose_tile():
         os.environ["BSG_SAVE_DIR"] = tmp
         world = new_world("Sneak", "head_deck_5")
         world.visited_rooms.append("head_deck_5")
+        world.shift = 4   # Night: Tigh passed out, stash findable
         io = ScriptedIO(["examine loose tile", "take flask", "quit"])
         Session(io=io, world=world).run()
         assert "flask" in world.inventory
@@ -39,6 +40,7 @@ def test_stash_thermos_in_mess_kitchen():
         os.environ["BSG_SAVE_DIR"] = tmp
         world = new_world("Sneak", "mess_hall")
         world.visited_rooms.append("mess_hall")
+        world.shift = 4   # Night: cook gone, kitchen unattended
         io = ScriptedIO(["examine kitchen", "take thermos", "quit"])
         Session(io=io, world=world).run()
         assert "stash_bottle_mess" in world.inventory
@@ -49,6 +51,7 @@ def test_stash_grease_can_in_raptor():
         os.environ["BSG_SAVE_DIR"] = tmp
         world = new_world("Sneak", "hangar_deck")
         world.visited_rooms.append("hangar_deck")
+        world.shift = 4   # Night: hangar quiet
         io = ScriptedIO(["examine raptor", "take grease can", "quit"])
         Session(io=io, world=world).run()
         assert "stash_bottle_hangar" in world.inventory
@@ -157,6 +160,7 @@ def test_cards_quest_starts_with_choice_menu():
         os.environ["BSG_SAVE_DIR"] = tmp
         world = new_world("Player", "pilots_rec")
         world.visited_rooms.append("pilots_rec")
+        world.shift = 2   # Afternoon: cards quest unlocked
         io = ScriptedIO(["talk to starbuck about cards", "quit"])
         Session(io=io, world=world).run()
         t = io.transcript.lower()
@@ -168,6 +172,7 @@ def test_cards_graceful_outcome():
         os.environ["BSG_SAVE_DIR"] = tmp
         world = new_world("Player", "pilots_rec")
         world.visited_rooms.append("pilots_rec")
+        world.shift = 2   # Afternoon: cards quest unlocked
         before = get_stat(world, "morale")
         io = ScriptedIO(
             ["talk to starbuck about cards", "talk to starbuck about graceful", "quit"]
@@ -182,6 +187,7 @@ def test_cards_flirt_outcome_bumps_romance():
         os.environ["BSG_SAVE_DIR"] = tmp
         world = new_world("Player", "pilots_rec")
         world.visited_rooms.append("pilots_rec")
+        world.shift = 2   # Afternoon: cards quest unlocked
         io = ScriptedIO(
             ["talk to starbuck about cards", "talk to starbuck about flirt", "quit"]
         )
@@ -195,6 +201,7 @@ def test_cards_cheat_outcome_drains_morale_and_spikes_suspicion():
         os.environ["BSG_SAVE_DIR"] = tmp
         world = new_world("Cheater", "pilots_rec")
         world.visited_rooms.append("pilots_rec")
+        world.shift = 2   # Afternoon: cards quest unlocked
         before_m = get_stat(world, "morale")
         before_s = get_stat(world, "suspicion")
         io = ScriptedIO(
@@ -211,6 +218,7 @@ def test_cards_accuse_outcome_terminates_starbuck_romance():
         os.environ["BSG_SAVE_DIR"] = tmp
         world = new_world("Bold", "pilots_rec")
         world.visited_rooms.append("pilots_rec")
+        world.shift = 2   # Afternoon: cards quest unlocked
         io = ScriptedIO(
             ["talk to starbuck about cards", "talk to starbuck about accuse", "quit"]
         )

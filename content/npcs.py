@@ -463,6 +463,31 @@ def hadrian_on_talk(world, topic):
             "lasagna. Why would I be hiding a prophecy in a lasagna? Although. Hmm.'"
         )
 
+    if topic in ("stash", "tigh's stash", "bottles", "bottle", "the stash"):
+        return (
+            "'Oh, you want the XO's stash?' He laughs. 'Wait til NIGHT, frak's sake.\n"
+            "Tigh hits the deck around the start of the Dog Watch and by Night he's\n"
+            "face-down. You go poking around DAYTIME and he'll have you peeling deck\n"
+            "plates with your teeth. Night, specialist. Night.'"
+        )
+
+    if topic in ("cards", "triad", "cards night", "starbuck's cards"):
+        return (
+            "'Cards night? Pilots do triad in the AFTERNOON. Mornings they're hung\n"
+            "over, evenings they're back in their racks pretending to read regs.\n"
+            "Afternoons. You sit down with Thrace, you lose your shift bonuses, you\n"
+            "go home a wiser man. Or, in your case, a SOMEWHAT wiser man.'"
+        )
+
+    if topic in ("schedule", "watches", "watch", "shifts", "the day"):
+        return (
+            "'Five watches. Morning Watch, Forenoon, Afternoon, Dog Watch, Night.\n"
+            "Repeat until you die. Mess is Morning and Afternoon only, so don't\n"
+            "sleep through if you wanna eat. Officers do paperwork on Forenoon,\n"
+            "drink on Dog Watch, and bother Adama all Night. The XO is in the head\n"
+            "the entire frakkin' time, somehow, in defiance of physics and biology.'"
+        )
+
     rumor = HADRIAN_RUMORS[state["rumor_index"] % len(HADRIAN_RUMORS)]
     state["rumor_index"] += 1
     return deja + rumor
@@ -702,6 +727,15 @@ def starbuck_on_talk(world, topic):
     topic_lower = topic.lower()
 
     if topic_lower in ("triad", "cards"):
+        # Cards Night is Afternoon only. Outside the window, Starbuck deflects
+        # in-character (no error message).
+        AFTERNOON = 2
+        if not world.flags.get("quest_cards_started") and world.shift != AFTERNOON:
+            return (
+                "She blows a smoke ring. 'Cards night, specialist? Not this watch.\n"
+                "Triad's an AFTERNOON thing. I haven't even pretended to do paperwork\n"
+                "yet. Come back when the sun's somewhere it wouldn't be on Caprica.'"
+            )
         # First-time cards triggers the quest with a choice menu in-character.
         if not world.flags.get("quest_cards_started"):
             world.flags["quest_cards_started"] = True
@@ -1067,8 +1101,21 @@ def _baltar_call_out(world):
 
 def baltar_on_talk(world, topic):
     bump_stat(world, "morale", -2)  # he is exhausting
+    # If you're "assisting Baltar" per the duty roster, talking to him counts.
+    # The completion narrative is appended to whatever line he gives below.
+    duty_extra = None
+    if world.current_room == "baltars_lab":
+        try:
+            from content.duties import on_baltar_assist
+            duty_extra = on_baltar_assist(world)
+        except Exception:
+            pass
+
+    def _wrap(line: str) -> str:
+        return line if not duty_extra else line + "\n\n" + duty_extra
+
     if topic is None:
-        return (
+        return _wrap(
             "Baltar startles, recovers, becomes very smooth. He had been mid-sentence\n"
             "with someone. There is no one there. He smiles. The smile is doing a lot\n"
             "of work.\n\n"
@@ -2161,6 +2208,15 @@ def cottle_on_talk(world, topic):
             "peace with that, kid.'"
         )
 
+    if topic_lower in ("sleep", "rest", "tired", "exhaustion", "exhausted"):
+        return (
+            COTTLE_PREFIX +
+            "'Sleep advances time, kid. The watch clock keeps turning. You hit your\n"
+            "rack and you wake up at the next watch — Morning, Forenoon, Afternoon,\n"
+            "whatever was queued up. SLEEP is the time-skip. It is also, separately,\n"
+            "good for you. Make of that what you will.'"
+        )
+
     if topic_lower in ("napkin", "paper"):
         return (
             COTTLE_PREFIX +
@@ -2381,6 +2437,14 @@ def cook_on_talk(world, topic):
             "'Hadrian eats two trays of lasagna a day, specialist. TWO. He has\n"
             "asked me three times what's in it. I have told him three times that\n"
             "he doesn't want to know. He keeps eating it. Frakkin' machine.'"
+        )
+
+    if t in ("hours", "schedule", "open", "closed", "mess hours"):
+        return (
+            "'Morning. Afternoon. THAT'S IT. Don't come around at Dog Watch askin'\n"
+            "for a tray, specialist. The kitchen is CLOSED. The VAT keeps stirring\n"
+            "regardless — vat doesn't care about your shift. But the line is shut\n"
+            "and I am ELSEWHERE. Got me?'"
         )
 
     return (

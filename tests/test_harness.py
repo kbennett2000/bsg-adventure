@@ -162,29 +162,29 @@ def test_full_forbidden_knowledge_playthrough():
 
 
 def test_stash_quest_complete_via_giving_all_three_to_tigh():
-    """Quest 1: Tigh's Secret Stash. Find all 3 bottles, return them."""
+    """Quest 1: Tigh's Secret Stash. Find all 3 bottles, return them.
+    Time-gated to Night, so the player has to sleep ahead to find any."""
     with tempfile.TemporaryDirectory() as tmp:
         os.environ["BSG_SAVE_DIR"] = tmp
         world = new_world("Stasher", "env_control")
         world.visited_rooms.append("env_control")
         io = ScriptedIO(
             [
-                # Get the canteen (quest required to unlock floor examine etc.)
+                # Morning Watch: get the canteen quest from Tigh
                 "go east", "go east",
-                "talk to tigh",                  # canteen + napkin drop
-                # Bottle 1: flask under loose tile in head
+                "talk to tigh",                       # canteen + napkin drop
+                # Sleep through Forenoon → Afternoon → Dog Watch → Night
+                "sleep", "sleep", "sleep", "sleep",
+                # Now Night: bottle reveals are accessible
                 "examine loose tile",
                 "take flask",
-                # Bottle 2: thermos in mess hall kitchen
                 "go west", "go north",
                 "examine kitchen",
                 "take thermos",
-                # Bottle 3: grease can in raptor (hangar)
                 "go north", "go north",
                 "examine raptor",
                 "take grease can",
-                # Back to Tigh, hand them over.
-                # hangar_deck → corridor_b → mess_hall → corridor_c12 → head
+                # Back to Tigh — still in head at Night (snoring)
                 "go south", "go south", "go south", "go east",
                 "give flask to tigh",
                 "give thermos to tigh",
@@ -219,19 +219,23 @@ def test_wrench_quest_complete_via_baltar_misdirection():
 
 
 def test_cards_quest_complete_all_four_outcomes_distinct():
-    """Quest 3: each of the 4 cards-night outcomes is reachable and distinct."""
+    """Quest 3: each of the 4 cards-night outcomes is reachable and distinct.
+    Cards Night is gated to Afternoon — set shift accordingly per iteration."""
     outcomes = {}
     for choice in ("graceful", "flirt", "cheat", "accuse"):
         with tempfile.TemporaryDirectory() as tmp:
-            io, world, _ = _run(
+            os.environ["BSG_SAVE_DIR"] = tmp
+            world = new_world("Card", "env_control")
+            world.shift = 2   # Afternoon: cards quest is open
+            io = ScriptedIO(
                 [
                     "go east", "go north", "go north", "go east",
                     "talk to starbuck about cards",
                     f"talk to starbuck about {choice}",
                     "quit",
-                ],
-                save_dir=tmp,
+                ]
             )
+            Session(io=io, world=world).run()
             outcomes[choice] = world.flags.get("quest_cards_choice")
     assert outcomes == {
         "graceful": "graceful",
@@ -448,6 +452,13 @@ def test_promotion_material_reachable_via_tuning():
         world.inventory.extend(["wrench", "napkin", "mop"])
         set_stat(world, "suspicion", 13)               # head witness +10, cic +3
         set_stat(world, "exhaustion", 25)              # plausible mid-game
+        # Pre-mark every corridor encounter as already witnessed so the
+        # transit through corridor_b doesn't fire a fresh random suspicion
+        # bump (tigh_catwalk: +5 / baltar_argues: +3 / etc) and break the
+        # suspicion-0 assertion non-deterministically.
+        for enc in ("tigh_catwalk", "six_supervisor", "six_distant",
+                    "pilots_yelling", "ensign_lost"):
+            world.flags[f"b7_encounter_seen_{enc}"] = True
 
         io = ScriptedIO(
             [

@@ -6,6 +6,46 @@ from .registry import ROOMS
 SAVE_VERSION = "0.1"
 
 
+# ─── Watch-cycle clock ─────────────────────────────────────────────────────────
+
+SHIFT_NAMES = [
+    "Morning Watch",   # 0
+    "Forenoon",        # 1
+    "Afternoon",       # 2
+    "Dog Watch",       # 3
+    "Night",           # 4
+]
+SHIFT_COUNT = len(SHIFT_NAMES)
+TURNS_PER_SHIFT = 15
+
+
+def shift_name(world: "WorldState") -> str:
+    return SHIFT_NAMES[world.shift % SHIFT_COUNT]
+
+
+def advance_shift(world: "WorldState", count: int = 1) -> bool:
+    """Advance the watch clock by `count` shifts. Resets the per-shift turn
+    counter. Returns True if the day rolled over (one or more times)."""
+    day_rolled = False
+    for _ in range(count):
+        world.shift = (world.shift + 1) % SHIFT_COUNT
+        if world.shift == 0:
+            world.day += 1
+            day_rolled = True
+    world.turns_this_shift = 0
+    return day_rolled
+
+
+def tick_shift_counter(world: "WorldState") -> bool:
+    """Increment the per-shift counter; if it reaches TURNS_PER_SHIFT, advance.
+    Returns True if a shift advance happened (caller can render a banner)."""
+    world.turns_this_shift += 1
+    if world.turns_this_shift >= TURNS_PER_SHIFT:
+        advance_shift(world, 1)
+        return True
+    return False
+
+
 @dataclass
 class WorldState:
     player_name: str = ""
@@ -22,6 +62,13 @@ class WorldState:
         "cylon_vibes": 0,
         "exhaustion": 0,
     })
+    # Watch-cycle clock. 0..4 maps to MORNING_WATCH / FORENOON / AFTERNOON /
+    # DOG_WATCH / NIGHT. `day` increments on each NIGHT → MORNING_WATCH wrap.
+    # `turns_this_shift` is the per-shift counter; at TURNS_PER_SHIFT (15) it
+    # auto-advances the shift.
+    shift: int = 0
+    day: int = 1
+    turns_this_shift: int = 0
 
     def to_dict(self) -> dict:
         d = asdict(self)

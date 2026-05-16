@@ -5,7 +5,7 @@ from typing import Callable, Optional
 
 from . import commands, events, parser, save as save_module
 from .io import IO, Disconnected
-from .world import WorldState, bump_stat, get_stat, new_world
+from .world import WorldState, bump_stat, get_stat, new_world, shift_name, tick_shift_counter
 
 
 AUTOSAVE_EVERY_N_TURNS = 10
@@ -62,6 +62,10 @@ class Session:
                 self.world.turn += 1
                 self._tick_exhaustion()
                 self._check_collapse()
+                # Watch-clock tick. May advance a shift; trigger any
+                # cross-shift consequences (duty roster, hunger, day rollover).
+                if tick_shift_counter(self.world):
+                    self._on_shift_change()
                 if self._check_suspicion_spaced():
                     self._finalize_ending()
                     return self._prompt_new_game_plus()
@@ -134,6 +138,23 @@ class Session:
     def _tick_exhaustion(self) -> None:
         if self.world.turn % EXHAUSTION_TICK_EVERY == 0:
             bump_stat(self.world, "exhaustion", EXHAUSTION_PER_TICK)
+
+    def _on_shift_change(self) -> None:
+        """Banner + cross-shift consequences (duty rollover, hunger penalty).
+        Called whenever the watch clock advances a shift, whether via the
+        auto-tick or via the `sleep` verb."""
+        self.io.send("")
+        self.io.send(f"── {shift_name(self.world).upper()}  (Day {self.world.day}) ──")
+        # Content-side cross-shift hooks (duty / hunger / etc.). Imported lazily
+        # to avoid engine→content circularity.
+        try:
+            from content.duties import on_shift_change
+            extra = on_shift_change(self.world)
+            if extra:
+                self.io.send("")
+                self.io.send(extra)
+        except Exception as exc:
+            self.log_fn(f"[on-shift-change-error] {exc!r}")
 
     def _check_collapse(self) -> bool:
         """At exhaustion 100, the player collapses and wakes up in sickbay

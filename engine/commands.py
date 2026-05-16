@@ -10,11 +10,14 @@ from .parser import Command
 from .registry import ITEMS, NPCS, ROOMS
 from .world import (
     WorldState,
+    advance_shift,
     bump_stat,
     get_stat,
     items_in_room,
     move_item_to_inventory,
     move_item_to_room,
+    set_stat,
+    shift_name,
 )
 
 
@@ -89,9 +92,33 @@ def _resolve_in_inventory(query: str, world: WorldState) -> Optional[Item]:
     return None
 
 
+def _npcs_present(world: WorldState, room_id: str) -> list[str]:
+    """Compute which NPCs are present in `room_id` at the current watch.
+    Schedules take precedence: an NPC with a schedule entry only appears in
+    rooms it is scheduled to be in. NPCs without schedules use their static
+    room.npcs placement (legacy behavior)."""
+    try:
+        from content.schedules import SCHEDULES, npcs_scheduled_for
+    except Exception:
+        # Content not loaded yet (e.g., early test setup) — fall back to static.
+        return [n for n in ROOMS[room_id].npcs if _npc_visible(world, n)]
+    static_npcs = ROOMS[room_id].npcs
+    present: list[str] = []
+    # Add scheduled NPCs whose current-shift room matches.
+    for npc_id in npcs_scheduled_for(room_id, world.shift):
+        if _npc_visible(world, npc_id) and npc_id not in present:
+            present.append(npc_id)
+    # Add NPCs without schedules from the static room list.
+    for npc_id in static_npcs:
+        if npc_id in SCHEDULES:
+            continue   # scheduled NPCs are handled above
+        if _npc_visible(world, npc_id) and npc_id not in present:
+            present.append(npc_id)
+    return present
+
+
 def _resolve_npc(query: str, world: WorldState) -> Optional[NPC]:
-    room = ROOMS[world.current_room]
-    for npc_id in room.npcs:
+    for npc_id in _npcs_present(world, world.current_room):
         if _matches(query, NPCS[npc_id]):
             return NPCS[npc_id]
     return None
@@ -117,9 +144,8 @@ def describe_room(world: WorldState, first_visit: bool = False) -> str:
     if room_items:
         names = [ITEMS[i].name for i in room_items]
         parts += ["", "You see: " + ", ".join(names) + "."]
-    visible_npc_names = []
-    if room.npcs:
-        visible_npc_names = [NPCS[n].name for n in room.npcs if _npc_visible(world, n)]
+    present_ids = _npcs_present(world, room.id)
+    visible_npc_names = [NPCS[n].name for n in present_ids]
     # Exhaustion ≥ 80: hallucinate a phantom in the room
     if get_stat(world, "exhaustion") >= 80:
         phantom = _exhaustion_phantom(world)
@@ -366,6 +392,30 @@ def cmd_wait(world, command, session) -> HandlerResult:
     return HandlerResult(text="You stand there. Time advances. The ship hums. Somewhere, an officer sighs meaningfully.")
 
 
+def cmd_sleep(world, command, session) -> HandlerResult:
+    """Sleep through one watch. Exhaustion to zero, time advances by one shift.
+    Skipping your assigned duty by sleeping is the player's problem — the
+    duty roster will not, on balance, be sympathetic."""
+    set_stat(world, "exhaustion", 0)
+    bump_stat(world, "morale", 2)
+    advance_shift(world, 1)
+    # advance_shift already reset turns_this_shift. Trigger the shift-change
+    # hooks (banner, duty rollover, hunger) via the session's normal path.
+    text = (
+        "You climb into your rack. The mattress is, as ever, a hate crime.\n"
+        "You close your eyes. You open them. You are, briefly, unsure how long\n"
+        "you slept. The fluorescents say 'a while.' The fluorescents are lying."
+    )
+    # Manually fire the shift-change banner since this didn't go through the
+    # auto-tick path that normally handles it.
+    if session is not None:
+        try:
+            session._on_shift_change()  # type: ignore[attr-defined]
+        except AttributeError:
+            pass
+    return HandlerResult(text=text, advance_turn=False)
+
+
 def cmd_save(world, command, session) -> HandlerResult:
     slot = (command.obj or "default").strip().split()[0] if command.obj else "default"
     if not save_module.is_safe_name(slot):
@@ -390,10 +440,12 @@ def cmd_load(world, command, session) -> HandlerResult:
     # Mutate the current world in place so session retains the same reference
     # Copy every WorldState field from the loaded snapshot. Note: any new
     # field added to WorldState MUST be listed here or it will silently fail
-    # to restore on load.
+    # to restore on load. The full-state-save sentinel test exists to catch
+    # exactly this mistake.
     for attr in (
         "player_name", "current_room", "inventory", "room_items",
         "flags", "turn", "npc_state", "visited_rooms", "stats",
+        "shift", "day", "turns_this_shift",
     ):
         setattr(world, attr, getattr(loaded, attr))
     return HandlerResult(text=f"Loaded slot '{slot}'.\n\n" + describe_room(world), advance_turn=False)
@@ -413,7 +465,8 @@ def cmd_help(world, command, session) -> HandlerResult:
         "  give <item> to <person>    — hand something over\n"
         "  drink <item>               — drink something. Be careful what.\n"
         "  eat <item>                 — eat something. Same warning.\n"
-        "  wait                       — let a turn pass\n"
+        "  wait                       — let a turn pass; lower your profile (suspicion -1)\n"
+        "  sleep                      — sleep through one watch. Exhaustion to 0. Time advances.\n"
         "  save [slot] / load [slot]  — save your game / load it back\n"
         "  status                     — how you're feeling, what your uniform's doing\n"
         "  hint                       — Adama, in your head, says something cryptic but useful\n"
@@ -501,7 +554,8 @@ def cmd_status(world, command, session) -> HandlerResult:
     vibe = _vibe_line(stats)
     uniform = _uniform_state(stats)
     body = _body_verb(stats)
-    text = "\n".join([vibe, uniform, body])
+    clock = f"It is {shift_name(world)}, day {world.day}."
+    text = "\n".join([vibe, uniform, body, clock])
     return HandlerResult(text=text, advance_turn=False)
 
 
@@ -670,6 +724,7 @@ HANDLERS: dict[str, Callable] = {
     "use": cmd_use,
     "give": cmd_give,
     "wait": cmd_wait,
+    "sleep": cmd_sleep,
     "save": cmd_save,
     "load": cmd_load,
     "help": cmd_help,

@@ -117,6 +117,8 @@ def test_world_state_has_no_undocumented_fields():
     expected = {
         "player_name", "current_room", "inventory", "room_items",
         "flags", "turn", "npc_state", "visited_rooms", "stats",
+        # Time system additions:
+        "shift", "day", "turns_this_shift",
     }
     assert field_names == expected, (
         f"WorldState fields changed. Got {field_names}; "

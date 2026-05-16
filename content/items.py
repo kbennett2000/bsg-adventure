@@ -46,10 +46,21 @@ def mop_on_use(world):
     bump_stat(world, "morale", -3)         # actual work tanks morale
     bump_stat(world, "exhaustion", 4)       # and it's tiring
     bump_stat(world, "suspicion", -1)       # but you look like you're doing your job
-    return (
+    base = (
         "You give the deck a professional once-over. It looks marginally less haunted. "
         "Somewhere, an officer feels vaguely better about themselves and does not know why."
     )
+    # If today's duty is to mop the head AND we're currently in the head,
+    # this fulfills it. The duty hook handles morale/suspicion separately.
+    if world.current_room == "head_deck_5":
+        try:
+            from content.duties import on_mop_head
+            extra = on_mop_head(world)
+            if extra:
+                return base + "\n\n" + extra
+        except Exception:
+            pass
+    return base
 
 
 register_item(Item(
@@ -110,7 +121,7 @@ def console_on_use(world):
     world.flags["noticed_anomaly"] = True
     bump_stat(world, "morale", -2)          # doing your actual job
     bump_stat(world, "exhaustion", 2)
-    return (
+    base = (
         "You tap a key. The screen scrolls:\n\n"
         "    COOLANT FLOW: NOMINAL\n"
         "    COOLANT FLOW: NOMINAL\n"
@@ -120,6 +131,14 @@ def console_on_use(world):
         "Huh. Deck 9 Valve 7B. You make a mental note to investigate. You will absolutely "
         "forget about this by lunch."
     )
+    try:
+        from content.duties import on_reroute_coolant
+        extra = on_reroute_coolant(world)
+        if extra:
+            return base + "\n\n" + extra
+    except Exception:
+        pass
+    return base
 
 
 register_item(Item(
@@ -286,6 +305,30 @@ def cigarette_on_eat(world):
 
 def cigarette_on_drink(world):
     return "It is not a beverage. Cottle would yell at both of us."
+
+
+# ─── Mess hall tray (handles the hunger mechanic) ─────────────────────────────
+
+
+def _tray_on_eat(world):
+    # Dispatch to the mess-hall handler in rooms.py — it knows whether the
+    # mess is currently open and whether the player has already eaten today.
+    from content.rooms import _mess_eat
+    return _mess_eat(world)
+
+
+register_item(Item(
+    id="tray",
+    name="regulation lunch tray",
+    aliases=["tray", "lasagna", "lunch", "protein", "food", "meal"],
+    description=(
+        "A regulation lunch tray. Three compartments. All grey. The grey is "
+        "structural. You can eat it (eat tray) during Morning Watch or Afternoon "
+        "when the mess is actually open."
+    ),
+    takeable=False,
+    on_eat=_tray_on_eat,
+))
 
 
 register_item(Item(
