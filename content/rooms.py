@@ -10,6 +10,53 @@ from engine.world import bump_stat, get_stat, move_item_to_room, witness_once
 # ─── Environmental Control (player's bunk) ────────────────────────────────────
 
 
+# ─── Cylon-variant examines ────────────────────────────────────────────────────
+# These examines have a baseline response AND an alternate response that fires
+# only when the hidden `is_cylon` flag is set. The Cylon variants describe
+# something the player "shouldn't" know — specs, internals, off-hand details
+# that aren't in any specialist's training. The flag flips silently when
+# cylon_vibes ≥ 75; players who never crossed the threshold see only the
+# baseline. The mechanic is not, otherwise, surfaced.
+
+
+def _env_pipes(world):
+    if world.flags.get("is_cylon"):
+        return (
+            "Coolant pipes. You know — without being told — which valve is going\n"
+            "to fail next, and when, and which alloy the replacement bolt should\n"
+            "be. You know the SPEC. You know the FACTORY. You don't know how you\n"
+            "know any of that. You change the subject."
+        )
+    return "Coolant pipes. They hum. One of them sweats. You have a complicated relationship with that one."
+
+
+def _hangar_viper(world):
+    if world.flags.get("is_cylon"):
+        return (
+            "A Viper. Mark II. You know the canopy seal is rated for nine seconds\n"
+            "at vacuum, the autoloader cycle is four hundred milliseconds, and the\n"
+            "third bolt on the port-side intake is overtorqued by six newton-meters.\n"
+            "You have never been in a Viper. You have never been near a Viper.\n"
+            "You are, currently, near a Viper. The Viper does not seem to mind."
+        )
+    return "A Viper. Beautiful. Lethal. Probably leaking. You are not authorized to fix this one. You wish you were."
+
+
+def _adama_model_ship(world):
+    if world.flags.get("is_cylon"):
+        return (
+            "The model ship. You know that the real ship was built in the Picon\n"
+            "yards, third drydock from the harbor, in 2982. You know the foreman's\n"
+            "first name. You know the song he was humming while he riveted the\n"
+            "starboard pod. You have never been to Picon. The foreman has been\n"
+            "dead for sixteen years. You change the subject."
+        )
+    return (
+        "The model ship. Allegedly being built. Has not progressed in three "
+        "years. One mast is on backwards. Nobody has the heart to tell him."
+    )
+
+
 def env_control_on_enter(world):
     if world.flags.get("seen_intercom_page"):
         return None
@@ -60,7 +107,7 @@ register_room(Room(
     npcs=["hadrian"],
     on_enter=env_control_on_enter,
     on_examine={
-        "pipes": "Coolant pipes. They hum. One of them sweats. You have a complicated relationship with that one.",
+        "pipes": lambda w: _env_pipes(w),
         "ceiling": "Pipes. Ducts. A handwritten sign that says 'DUCK, DUMBASS.' The sign is below the ducts. It is correct.",
         "rack": "Your rack. Bottom of a three-high stack. Still warm.",
         "hatch": (
@@ -770,7 +817,7 @@ register_room(Room(
     npcs=["tyrol", "boomer"],
     on_enter=hangar_on_enter,
     on_examine={
-        "viper": "A Viper. Beautiful. Lethal. Probably leaking. You are not authorized to fix this one. You wish you were.",
+        "viper": _hangar_viper,
         "raptor": hangar_examine_raptor,
         "raptors": hangar_examine_raptor,
         "wrench": (
@@ -986,14 +1033,8 @@ register_room(Room(
     npcs=[],
     on_enter=adamas_quarters_on_enter,
     on_examine={
-        "model": (
-            "The model ship. Allegedly being built. Has not progressed in three "
-            "years. One mast is on backwards. Nobody has the heart to tell him."
-        ),
-        "ship": (
-            "The model ship. Allegedly being built. Has not progressed in three "
-            "years. One mast is on backwards. Nobody has the heart to tell him."
-        ),
+        "model": _adama_model_ship,
+        "ship": _adama_model_ship,
         "drawer": adama_quarters_examine_drawer,
         "drawers": adama_quarters_examine_drawer,
         "panel": adama_quarters_examine_panel,

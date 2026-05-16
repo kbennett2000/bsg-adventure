@@ -74,6 +74,23 @@ def _all_along(world):
     )
 
 
+def _watchtower_cylon_only(world):
+    """Cylon-only ambient. Returns None for non-Cylon players (events.tick
+    handles None as a no-fire). Registered multiple times so Cylon players
+    see Watchtower-themed ambients ~3x as often."""
+    if not world.flags.get("is_cylon"):
+        return None
+    bump_stat(world, "cylon_vibes", 3)
+    return (
+        "The melody is in your head again. Four notes. Four more. You know — you\n"
+        "don't know HOW you know — it's called 'All Along the Watchtower.' You\n"
+        "have never heard it. It has always been there."
+    )
+
+
 def install() -> None:
     register_ambient(*AMBIENT_LINES)
     register_ambient(_watchtower, _all_along)
+    # Three copies so that, when an ambient fires for a Cylon player, the
+    # Cylon-only variant has substantially higher selection probability.
+    register_ambient(_watchtower_cylon_only, _watchtower_cylon_only, _watchtower_cylon_only)

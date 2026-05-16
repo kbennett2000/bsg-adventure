@@ -450,14 +450,29 @@ register_item(Item(
 # ─── Cylon detector prototype ────────────────────────────────────────────────
 
 def cylon_detector_on_use(world):
-    """Beeps at a random NPC in the room, or occasionally at the player."""
+    """Beeps at a random NPC in the room, or occasionally at the player.
+
+    Hidden mechanic: if the player has crossed the silent Cylon threshold,
+    the detector beeps at THEM every time. Deterministic, not random."""
     import random
     from engine.registry import NPCS, ROOMS
+
+    # Cylon path: deterministic, always points at player.
+    if world.flags.get("is_cylon"):
+        bump_stat(world, "cylon_vibes", 5)
+        bump_stat(world, "morale", -3)
+        return (
+            "The detector hums. The detector beeps. The needle, this time, does\n"
+            "not waver. It points at you. It has, you suspect, always pointed at\n"
+            "you. You hold it at arm's length. The needle follows. You hold it\n"
+            "behind your back. The needle, somehow, still follows."
+        )
+
     room = ROOMS[world.current_room]
     candidates = []
     for npc_id in room.npcs:
         candidates.append(("npc", npc_id))
-    # ~30% chance the detector points at the player
+    # ~30% chance the detector points at the player (non-Cylon mode)
     candidates.append(("player", None))
     candidates.append(("player", None))
     if not candidates:

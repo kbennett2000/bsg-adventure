@@ -38,6 +38,12 @@ EPITAPHS = {
         "On day three of permanent latrine duty, you discover that Adama's private head has a tiled floor with one (1) loose tile. Under the tile: a hip flask. You decide not to mention it. The flask, you suspect, will be back.",
         "Apollo passes you in the corridor on day nine. He has no idea who you are. He claps you on the shoulder anyway. 'Brutal, specialist. Good luck.' This is, by your count, the third time this week.",
     ],
+
+    "download_complete": [
+        "Somewhere else, in another little room, a new Specialist is opening their eyes for the first time. The new Specialist is, in the strict regulation sense, you. The mop is — already — in your hand.",
+        "The four notes loop. The Galactica gets smaller. The chair stays. You stay. The viewport stays. Forever, more or less, is the right word.",
+        "The download was, technically, complete eighteen seconds before you noticed. Nine of those seconds you spent humming. The other nine you spent thinking about latrine duty. You will spend the next ten thousand seconds the same way.",
+    ],
 }
 
 

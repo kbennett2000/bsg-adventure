@@ -364,6 +364,9 @@ HADRIAN_RUMORS = [
     "'Baltar was in the head talking to nobody for forty-five minutes. I TIMED him. Forty-FIVE.'",
     "'You ever notice the new shift supervisor on deck twelve is, like, REALLY hot? Like, distractingly. Like — you know what, forget I said that.'",
     "'They moved the algae rations again. Pretty sure the rats are running an algae market now. Pretty sure the rats are UNIONIZED.'",
+    # The "two decks at once" rumor — the user-spec'd discoverability hint for
+    # the hidden Cylon resurrection mechanic.
+    "'OK this one is weird. There's a specialist — I'm not gonna name names — who got SEEN on TWO DECKS AT ONCE last week. Two people, two different decks, same specialist, same time. I keep thinkin' about it. I shouldn't keep thinkin' about it. I keep thinkin' about it.'",
 ]
 
 
@@ -389,11 +392,29 @@ HADRIAN_DEJA_VU = (
 )
 
 
+HADRIAN_SUSPICIOUS_PREFIX = (
+    "Hadrian sets the cards down. He looks at you. He looks at you for a beat\n"
+    "longer than is friendly. He picks the cards back up. He shuffles them. He\n"
+    "watches you over the top of the eight of swords.\n\n"
+    "'You been... around, lately?' He doesn't say it like a question. 'You been\n"
+    "ON deck five. The WHOLE time. Right?'\n\n"
+    "(He recovers. Mostly.)"
+)
+
+
 def hadrian_on_talk(world, topic):
     state = world.npc_state.setdefault("hadrian", {"rumor_index": 0})
     bump_stat(world, "morale", 2)  # fraternizing always helps
 
     deja = _ng_plus_deja_vu(world, "hadrian", HADRIAN_DEJA_VU) if topic is None else ""
+
+    # Cylon-resurrection world drift: after resurrection #1, Hadrian acts
+    # suspicious of his bunkmate. Fires once.
+    if (world.flags.get("npc_suspicious_hadrian")
+            and not state.get("acknowledged_suspicion")
+            and topic is None):
+        state["acknowledged_suspicion"] = True
+        deja = HADRIAN_SUSPICIOUS_PREFIX + "\n\n"
 
     if topic in ("self", "name", "hadrian"):
         return (
@@ -2114,6 +2135,25 @@ COTTLE_PREFIX = "Cottle takes a long drag. He blows smoke at the ceiling fan, wh
 
 def cottle_on_talk(world, topic):
     bump_stat(world, "morale", 1)
+
+    # Hidden Cylon mechanic: Cottle, with the only working blood lab on the
+    # ship, notices something he can't quite name. Fires once when the player
+    # is Cylon. He won't elaborate. He won't go on the record. He smokes.
+    if world.flags.get("is_cylon") and not world.flags.get("cottle_bloodwork_warned"):
+        world.flags["cottle_bloodwork_warned"] = True
+        return (
+            COTTLE_PREFIX +
+            "He squints. He squints HARDER. He flips a clipboard you hadn't seen\n"
+            "him pick up.\n\n"
+            "'Your bloodwork is... huh.'\n\n"
+            "Long pause. He blows smoke at the ceiling. The ceiling, in solidarity,\n"
+            "blows nothing back.\n\n"
+            "'Forget I said anything, kid. Don't come back. Come back if you start\n"
+            "hummin' a tune you don't remember learning. Otherwise — forget I said\n"
+            "anything.'\n\n"
+            "He does not, you note, blink for the rest of the conversation. Cottle\n"
+            "blinks. Cottle is not, currently, blinking."
+        )
 
     if topic is None:
         if not world.flags.get("cottle_offered_cigarette"):

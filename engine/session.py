@@ -13,6 +13,19 @@ EXHAUSTION_PER_TICK = 1            # +1 stat per tick
 EXHAUSTION_TICK_EVERY = 1          # every N turns
 COLLAPSE_LOSES_ITEMS = ("canteen", "mop", "algae_bar")  # napkin is spared
 
+# Hidden Cylon mechanic. cylon_vibes ≥ this threshold silently flips a hidden
+# flag; from that point on, the player resurrects on "death" endings (spaced,
+# forbidden_knowledge) instead of game-over. Three resurrections fire the
+# unique Download Complete ending. None of this is surfaced to the player.
+CYLON_THRESHOLD = 75
+DEATH_ENDINGS = ("spaced", "forbidden_knowledge")
+RESURRECTION_DOWNLOAD_AT = 3       # third resurrection becomes Download Complete
+
+
+# Sentinel returned by ending-handling helpers when the player resurrected
+# and the session loop should continue (rather than returning a NG+ dict).
+_CONTINUE = object()
+
 
 def _noop_log(_msg: str) -> None:
     """Default log function — silent. Server mode injects its own."""
@@ -62,13 +75,18 @@ class Session:
                 self.world.turn += 1
                 self._tick_exhaustion()
                 self._check_collapse()
+                # Silent Cylon flag flip — checked after every advancing turn
+                # so any path that pushes cylon_vibes over the threshold is caught.
+                self._check_cylon_threshold()
                 # Watch-clock tick. May advance a shift; trigger any
                 # cross-shift consequences (duty roster, hunger, day rollover).
                 if tick_shift_counter(self.world):
                     self._on_shift_change()
                 if self._check_suspicion_spaced():
-                    self._finalize_ending()
-                    return self._prompt_new_game_plus()
+                    nxt = self._handle_end_or_resurrect()
+                    if nxt is _CONTINUE:
+                        continue
+                    return nxt
                 ambient = events.tick(self.world)
                 if ambient:
                     self.io.send("")
@@ -76,8 +94,10 @@ class Session:
                 if self.world.turn % AUTOSAVE_EVERY_N_TURNS == 0:
                     self._autosave_quiet()
             if result.ended:
-                self._finalize_ending()
-                return self._prompt_new_game_plus()
+                nxt = self._handle_end_or_resurrect()
+                if nxt is _CONTINUE:
+                    continue
+                return nxt
             if result.quit:
                 self._autosave_quiet()
                 return None
@@ -226,6 +246,87 @@ class Session:
             save_module.save_world(self.world, slot="auto")
         except Exception:
             pass
+
+    # ─── Hidden Cylon mechanic ─────────────────────────────────────────────
+
+    def _check_cylon_threshold(self) -> None:
+        """Silently set the hidden is_cylon flag when cylon_vibes crosses
+        the threshold. Never surfaced to the player; the world reacts via
+        other hooks (Cottle bloodwork remark, detector behavior, ambient
+        Watchtower frequency, certain examines)."""
+        if self.world.flags.get("is_cylon"):
+            return
+        if get_stat(self.world, "cylon_vibes") >= CYLON_THRESHOLD:
+            self.world.flags["is_cylon"] = True
+
+    def _handle_end_or_resurrect(self):
+        """Common path for any ending the loop just triggered. If the player
+        is a Cylon and this is a 'death' ending, intercept it with
+        resurrection (return _CONTINUE so the caller continues the loop).
+        Otherwise finalize and prompt for new-game-plus."""
+        if self._maybe_resurrect():
+            return _CONTINUE
+        self._finalize_ending()
+        return self._prompt_new_game_plus()
+
+    def _maybe_resurrect(self) -> bool:
+        """If the player is a Cylon and the current ending is a 'death'
+        ending (spaced or forbidden_knowledge), perform resurrection.
+        Returns True if resurrection happened; False otherwise."""
+        if not self.world.flags.get("is_cylon"):
+            return False
+        ending_id = self.world.flags.get("__ended__")
+        if ending_id not in DEATH_ENDINGS:
+            return False
+        new_count = self.world.flags.get("resurrection_count", 0) + 1
+        self.world.flags["resurrection_count"] = new_count
+        if new_count >= RESURRECTION_DOWNLOAD_AT:
+            # Third resurrection → Download Complete ending replaces normal
+            # resurrection. The original death ending text already printed;
+            # we override __ended__ and append the Download Complete monologue,
+            # then let _finalize_ending handle the epitaph + END banner.
+            self.world.flags["__ended__"] = "download_complete"
+            from content.cylon import DOWNLOAD_COMPLETE_TEXT
+            self.io.send("")
+            self.io.send(DOWNLOAD_COMPLETE_TEXT)
+            return False    # finalize handles the new ending normally
+        # Normal resurrection: clear the death ending, apply world drift,
+        # print the resurrection narrative, and continue the loop.
+        self.world.flags.pop("__ended__", None)
+        self._apply_resurrection_drift(new_count)
+        from content.cylon import resurrection_text
+        self.io.send("")
+        self.io.send(resurrection_text(new_count))
+        return True
+
+    def _apply_resurrection_drift(self, resurrection_number: int) -> None:
+        """Each resurrection makes the world slightly more wrong. Mutates the
+        WorldState in place. The shape of the drift escalates with the count."""
+        from .world import set_stat
+        w = self.world
+        # Time advances: the fleet has jumped one step further.
+        w.day += 1
+        w.shift = 0
+        w.turns_this_shift = 0
+        # Body reset.
+        set_stat(w, "exhaustion", 0)
+        set_stat(w, "morale", max(20, get_stat(w, "morale") // 2))
+        set_stat(w, "suspicion", get_stat(w, "suspicion") // 2)
+        # cylon_vibes stays — you are, increasingly, what you are.
+        # Player wakes in their bunk (resurrection tank → env_control).
+        w.current_room = "env_control"
+        # Per-resurrection NPC drift.
+        if resurrection_number == 1:
+            w.flags["npc_suspicious_hadrian"] = True
+        elif resurrection_number == 2:
+            w.flags["npc_dead_helo"] = True
+        # Day-roll flags reset so duty/hunger don't double-trigger:
+        for k in (
+            "duty_today", "duty_mopped_today", "duty_console_today",
+            "duty_brig_today", "duty_baltar_today", "ate_today",
+        ):
+            w.flags.pop(k, None)
+        w.flags["_last_rollover_day"] = w.day
 
 
 def start_session_local(io: IO, player_name: str, starting_room: str) -> Session:

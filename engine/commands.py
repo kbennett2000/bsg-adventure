@@ -96,22 +96,25 @@ def _npcs_present(world: WorldState, room_id: str) -> list[str]:
     """Compute which NPCs are present in `room_id` at the current watch.
     Schedules take precedence: an NPC with a schedule entry only appears in
     rooms it is scheduled to be in. NPCs without schedules use their static
-    room.npcs placement (legacy behavior)."""
+    room.npcs placement (legacy behavior). NPCs flagged 'dead' (via the
+    Cylon-resurrection world-drift) are filtered out entirely."""
     try:
         from content.schedules import SCHEDULES, npcs_scheduled_for
     except Exception:
-        # Content not loaded yet (e.g., early test setup) — fall back to static.
-        return [n for n in ROOMS[room_id].npcs if _npc_visible(world, n)]
+        return [n for n in ROOMS[room_id].npcs if _npc_visible(world, n)
+                and not world.flags.get(f"npc_dead_{n}")]
     static_npcs = ROOMS[room_id].npcs
     present: list[str] = []
-    # Add scheduled NPCs whose current-shift room matches.
     for npc_id in npcs_scheduled_for(room_id, world.shift):
+        if world.flags.get(f"npc_dead_{npc_id}"):
+            continue
         if _npc_visible(world, npc_id) and npc_id not in present:
             present.append(npc_id)
-    # Add NPCs without schedules from the static room list.
     for npc_id in static_npcs:
         if npc_id in SCHEDULES:
-            continue   # scheduled NPCs are handled above
+            continue
+        if world.flags.get(f"npc_dead_{npc_id}"):
+            continue
         if _npc_visible(world, npc_id) and npc_id not in present:
             present.append(npc_id)
     return present
