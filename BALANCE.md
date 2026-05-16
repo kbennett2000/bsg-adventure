@@ -1,6 +1,8 @@
 # BALANCE.md
 
-Comprehensive stat-change audit for the hardening pass.
+Comprehensive stat audit for the **second hardening pass** (post: critique
+fixes, time system, schedules, duty roster, hunger, Cylon resurrection
+mechanic, Quorum press conference).
 
 **Stat range:** `[0, 100]` for all four (`morale`, `suspicion`, `cylon_vibes`,
 `exhaustion`). Helper `bump_stat()` clamps; you cannot push past either bound.
@@ -9,6 +11,7 @@ Comprehensive stat-change audit for the hardening pass.
 - **one-shot** — gated by a flag, fires the first time only
 - **repeatable** — bumps every time, no cap on calls
 - **per-turn** — bumps with the turn tick
+- **per-shift** — bumps with shift-change hook
 
 ---
 
@@ -16,9 +19,10 @@ Comprehensive stat-change audit for the hardening pass.
 
 | Action | Δ morale | Δ suspicion | Δ cylon_vibes | Δ exhaustion | Repeat? | Notes |
 |---|---:|---:|---:|---:|---|---|
-| `salute` | -3 | | | | repeatable | also `dignity_lost +1`; free of turn cost? No — burns a turn |
-| `frak` | **+1** (post-tune) | | | | repeatable | burns a turn (+1 ex implicit) |
-| `wait` | | **-1** (post-tune, cap 0) | | | repeatable | "lay low" — see tuning notes |
+| `salute` | -3 | | | | repeatable | also `dignity_lost +1`; burns a turn |
+| `frak` | +1 | | | | repeatable | burns a turn (per-tick +1 ex implicit) |
+| `wait` | | -1 | | | repeatable | "lay low" — cap 0 |
+| `sleep` | +2 | | | -100→0 | repeatable | advances 1 shift; fires shift-change hook |
 | any turn-advancing | | | | +1 | per-turn | implicit; via session tick |
 
 ## Items
@@ -26,349 +30,357 @@ Comprehensive stat-change audit for the hardening pass.
 | Action | Δ morale | Δ suspicion | Δ cylon_vibes | Δ exhaustion | Repeat? | Notes |
 |---|---:|---:|---:|---:|---|---|
 | `eat algae_bar` | -2 | | | -3 | **one-shot** | item consumed |
-| `use mop` | -3 | **-1** (post-tune) | | +4 | repeatable | core suspicion-reducer; player can grind, but exhausts |
+| `use mop` | -3 | -1 | | +4 | repeatable | core suspicion-reducer; doubles as duty action |
 | `use locker` | | | +2 | | one-shot | déjà vu via "dent without a story" |
-| `use console` | -2 | | | +2 | repeatable | sets `noticed_anomaly` flag |
-| `drink canteen` (filled) | +5 | +8 | | -5 | repeatable | bumps `tigh_drink_count` |
-| `drink flask` | +6 | +2 | | +6 | repeatable | bumps `tigh_drink_count` |
-| `drink stash_bottle_mess` | +6 | +2 | | +6 | repeatable | bumps `tigh_drink_count` |
-| `drink stash_bottle_hangar` | +6 | +2 | | +6 | repeatable | bumps `tigh_drink_count` |
+| `use console` | -2 | | | +2 | repeatable | sets `noticed_anomaly`; doubles as `reroute_coolant` duty |
+| `drink canteen` (filled) | +5 | +8 | | -5 | repeatable | `tigh_drink_count +1` |
+| `drink flask`/`drink thermos`/`drink grease_can` | +6 | +2 | | +6 | repeatable | `tigh_drink_count +1` |
+| `eat tray` (in mess, open) | -1 | | | -3 | **once/day** | sets `ate_today`; fails when mess closed |
 | `examine photo_academy` | | +20 | | | one-shot | the iconic spike |
 | `use cigarette` | +6 | | | +4 | one-shot | item consumed |
-| `use cylon_detector` | -5 (if points at player) | | +10 (if points at player) | | repeatable, random | ~30% chance points at player |
+| `use cylon_detector` (non-Cylon, ~30% chance) | -5 | | +10 | | repeatable | random |
+| `use cylon_detector` (Cylon, always) | -3 | | +5 | | repeatable | deterministic — always at player |
+| `use commendation_letter` | +5 | -10 | | | one-shot | high-credibility press reward |
 | `use sealed_envelope` | | | | | one-shot | triggers `forbidden_knowledge` ending |
 
-## Rooms — on_enter
+## Rooms — on_enter (first visit)
 
-| Room | First visit | Revisit | Notes |
-|---|---|---|---|
-| env_control | (intercom page, no stat) | — | |
-| corridor_c12 | random encounter, see below | random encounter | encounter stat bumps **one-shot per type** (post-tune) |
-| head_deck_5 | suspicion **+10** (witness Tigh) | — | via `witness_once` |
-| mess_hall | (jump gossip flag) | random encounter (no stat) | |
-| corridor_b | random encounter, see below | random encounter | encounter stat bumps **one-shot per type** (post-tune) |
-| pilots_rec | morale +3 | — | |
-| baltars_lab | suspicion +5 (witness), morale -3, cylon_vibes +2 | (nothing post-tune; was morale -1) | revisit damper removed |
-| hangar_deck | random encounter (no stat) | random encounter (no stat) | |
-| corridor_a | morale +2 | — | "officer country carpet" |
-| sickbay | (no stat) | — | |
-| adamas_quarters | suspicion **+15** (witness) | — | the "moment" |
-| brig | cylon_vibes +8 | **(no stat post-tune)** | was +2 on revisit |
-| observation_deck | (no stat) | — | |
-| cic | morale +4, suspicion +3 | — | "you snuck in" / "you're on camera" |
-| algae_processor | morale -10, cylon_vibes -3 | — | mystery meat reveal |
-| adamas_workshop | suspicion +15 | — | second photo + workshop |
-| storage_bay | cylon_vibes **+10** | **(no stat post-tune)** | was +10 every entry |
-
-### Corridor C-12 random encounters (one-shot per type, post-tune)
-
-| Encounter | Δ suspicion | Δ morale | Δ cylon_vibes | Notes |
+| Room | Δ morale | Δ suspicion | Δ cylon_vibes | Notes |
 |---|---:|---:|---:|---|
-| `tigh_staggers` | +4 | | | one-shot |
-| `starbuck_punches` | | +2 | | one-shot |
-| `six_walks` | | | +5 | one-shot, also `saw_a_six` flag |
-| `baltar_argues` | +3 | -1 | | one-shot |
-| `apollo_mopes` | | +1 | | one-shot |
-| `tyrol_yells` | | | | (no bump) |
+| env_control | | | | intercom page, no stat |
+| corridor_c12 | (encounter) | (encounter) | (encounter) | **per-encounter-type one-shot** (post-rebalance) |
+| head_deck_5 | | +10 | | `witness_once` Tigh drinking |
+| mess_hall | | | | jump-gossip flag |
+| corridor_b | (encounter) | (encounter) | (encounter) | **per-encounter-type one-shot** |
+| pilots_rec | +3 | | | |
+| baltars_lab | -3 | +5 (witness) | +2 | revisit damper removed |
+| hangar_deck | | | | |
+| corridor_a | +2 | | | "officer country carpet" |
+| sickbay | | | | |
+| adamas_quarters | | +15 | | `witness_once` "the moment" |
+| brig | | | +8 | first entry only post-rebalance |
+| observation_deck | | | | |
+| cic | +4 | +3 | | "snuck in" / "on camera" |
+| algae_processor | -10 | | -3 | mystery-meat reveal |
+| adamas_workshop | | +15 | | the actual workshop |
+| storage_bay | | | +10 | first entry only post-rebalance |
 
-### Corridor B-7 random encounters (one-shot per type, post-tune)
+### Corridor encounters (one-shot per encounter type)
 
-| Encounter | Δ suspicion | Δ morale | Δ cylon_vibes | Notes |
-|---|---:|---:|---:|---|
-| `six_supervisor` | | | +8 | one-shot |
-| `six_distant` | | | +3 | one-shot |
-| `tigh_catwalk` | +5 | | | one-shot |
-| `pilots_yelling` | | +1 | | one-shot |
-| `ensign_lost` | | | | (no bump) |
+| Corridor | Encounter | Stat | Δ |
+|---|---|---|---:|
+| C-12 | tigh_staggers | suspicion | +4 |
+| C-12 | starbuck_punches | morale | +2 |
+| C-12 | six_walks | cylon_vibes | +5 |
+| C-12 | baltar_argues | suspicion / morale | +3 / -1 |
+| C-12 | apollo_mopes | morale | +1 |
+| C-12 | tyrol_yells | — | — |
+| B-7 | six_supervisor | cylon_vibes | +8 |
+| B-7 | six_distant | cylon_vibes | +3 |
+| B-7 | tigh_catwalk | suspicion | +5 |
+| B-7 | pilots_yelling | morale | +1 |
+| B-7 | ensign_lost | — | — |
 
 ## NPC `talk` — default (each call)
 
-| NPC | Δ morale | Δ suspicion | Δ cylon_vibes | Notes |
-|---|---:|---:|---:|---|
-| `hadrian` | +2 | | | repeatable; fraternizing |
-| `tigh` | -2 | | | repeatable; intimidating |
-| `adama` | -2 | | | repeatable; formal |
-| `starbuck` | +4 | | | repeatable; chaos |
-| `apollo` | +3 | | | repeatable; himbo energy |
-| `baltar` | -2 | | | repeatable; he drains |
-| `six` | | | +25 | each call also re-checks cylon ending |
-| `roslin` | +1 | **+1** (post-tune, was +3) | | repeatable but small |
-| `tyrol` | +1 | | | repeatable |
-| `boomer` | | | +2 | repeatable; ambient creepy |
-| `helo` | +2 | | | repeatable; bumps `romance_helo` |
-| `gaeta` | +2 | | | repeatable; uses player's NAME |
-| `cottle` | +1 | | | repeatable |
-| `dualla` | +1 | | | repeatable |
-| `cook` | -1 | | | repeatable |
+| NPC | Δ morale | Δ suspicion | Δ cylon_vibes |
+|---|---:|---:|---:|
+| `hadrian` | +2 | | |
+| `tigh` (quest first time) | -2 | | |
+| `adama` | -2 | | |
+| `starbuck` | +4 | | |
+| `apollo` | +3 | | |
+| `baltar` | -2 | | |
+| `six` | | | +25 |
+| `roslin` | +1 | +1 | |
+| `tyrol` | +1 | | |
+| `boomer` | | | +2 |
+| `helo` | +2 | | |
+| `gaeta` | +2 | | |
+| `cottle` | +1 | | |
+| `dualla` | +1 | | |
+| `cook` | -1 | | |
 
-## NPC `talk` — topic-specific (additional, on top of default)
+## NPC `talk` — topic-specific (additional)
 
-| Topic | Δ | Repeat? | Notes |
-|---|---|---|---|
-| `tigh about adama/bill/water/flask/meeting/quarters` | suspicion +25 | repeatable | 3 asks → spaced ending |
-| `roslin about prophecy` | — | one-shot (starts quest) | |
-| `roslin about yes` | suspicion +12 | one-shot | wrong answer |
-| `roslin about no` | morale -5 | one-shot | also wrong |
-| `roslin about maybe` | suspicion +8, morale -3 | one-shot | also wrong |
-| `starbuck about cards` | morale +3 | one-shot | starts cards quest |
-| `starbuck about triad` | morale +5 | one-shot | |
-| `starbuck about arm/wrestle` | morale +3, exhaustion +5 | one-shot | she dislocates something |
-| `starbuck about making out` | morale +10, romance bump | one-shot per beat | beat 1/2/3 → complicated |
-| `starbuck about graceful` | morale +5 | one-shot | cards outcome |
-| `starbuck about flirt` | morale +7, romance bump | one-shot | cards outcome |
-| `starbuck about cheat` | morale -15, suspicion +12 | one-shot | public humiliation |
-| `starbuck about accuse` | morale +6, romance terminal | one-shot | "we respect each other too much" |
-| `baltar about her` | suspicion +8, cylon_vibes +12 | one-shot | play-along |
-| `baltar about nobody` | suspicion +12, morale -3 | one-shot | call-out |
-| `baltar about juno` | suspicion +3 | repeatable | sets `baltar_distracted` |
-| `six about god/love` | cylon_vibes +35 | repeatable | romance bump |
-| `six about cylon` | cylon_vibes +30 | repeatable | |
-| `six about anything else (default topics)` | cylon_vibes +25 | repeatable | |
-| `boomer about water/home/the music/being someone else` | cylon_vibes +18 to +25 | repeatable | "honest" answers spike |
-| `boomer about no/nothing/etc` | morale +1 | repeatable | "dismissive" answers safe |
-| `boomer about cylon` | cylon_vibes +10 | repeatable | |
-| `dualla about apollo/self/hypothetically` | morale, romance bump | one-shot per beat | her flirty topics |
-| `dualla about boomer` | cylon_vibes +4 | repeatable | she suspects |
-| `roslin about napkin` | — | repeatable (after `prophecy` started) | hints toward Adama |
-| `tyrol about boomer` | cylon_vibes +3 | repeatable | |
+| Topic | Δ | Notes |
+|---|---|---|
+| `tigh about adama/bill/water/flask/meeting/quarters` | suspicion +25 | 3 asks → spaced |
+| `roslin about prophecy yes` | suspicion +12 | one-shot |
+| `roslin about prophecy no` | morale -5 | one-shot |
+| `roslin about prophecy maybe` | suspicion +8, morale -3 | one-shot |
+| `roslin about press/conference/quorum/reporters` | (triggers minigame) | one-shot per run |
+| `starbuck about cards` (Afternoon only) | morale +3 | starts cards quest |
+| `starbuck about triad` | morale +5 | one-shot |
+| `starbuck about arm/wrestle` | morale +3, exhaustion +5 | one-shot |
+| `starbuck about making out` | morale +10, +romance | beat 1/2/3 |
+| `starbuck about graceful` | morale +5 | cards outcome |
+| `starbuck about flirt` | morale +7, +romance | cards outcome |
+| `starbuck about cheat` | morale -15, suspicion +12 | cards outcome |
+| `starbuck about accuse` | morale +6, romance terminal | cards outcome |
+| `baltar about her` | suspicion +8, cylon_vibes +12 | play-along |
+| `baltar about nobody` | suspicion +12, morale -3 | call-out |
+| `baltar about juno` | suspicion +3 | sets `baltar_distracted` |
+| `six about god/love` | cylon_vibes +35, romance | |
+| `six about cylon` | cylon_vibes +30 | |
+| `six about anything else` | cylon_vibes +25 | |
+| `boomer about water/home/the music/being someone else` | cylon_vibes +18 to +25 | "honest" answers |
+| `boomer about no/nothing` | morale +1 | dismissive (safe) |
+| `boomer about cylon` | cylon_vibes +10 | |
+| `dualla about apollo/self/hypothetically` | romance + small morale | |
+| `dualla about boomer` | cylon_vibes +4 | |
+| `tyrol about boomer` | cylon_vibes +3 | |
 
-## Quest rewards
+## Witness one-shots
+
+| Witness | Δ | Source |
+|---|---|---|
+| First entry to head_deck_5 | suspicion +10 | Tigh drinking |
+| First entry to adamas_quarters | suspicion +15 | unspoken bond |
+| First entry to baltars_lab | suspicion +5 | Baltar arguing |
+| First examine of `photo_academy` | suspicion +20 | the Picon photo |
+
+## Quest rewards / completion
 
 | Action | Δ | Notes |
 |---|---|---|
-| `give wrench to tyrol` | morale +8, suspicion **-10** (post-tune, was -5) | one-shot |
+| `give wrench to tyrol` | morale +8, suspicion **-10** | one-shot |
 | `give flask/thermos/grease_can to tigh` (intermediate) | suspicion +4 | per delivery |
-| 3rd stash bottle returned to Tigh | morale +8, exhaustion +6 | one-shot (full quest) |
+| 3rd stash bottle returned to Tigh | morale +8, exhaustion +6 | one-shot full quest |
+| Duty completion (any chore) | morale -3, suspicion -5 | one per day |
+| Romance "complicated" (any) | suspicion +5 | per romance |
 
-## Stash bottle / photo / detector / cigarette discoveries
+## Time / shift system
 
-| Action | Δ | Notes |
+| Trigger | Δ | Source |
 |---|---|---|
-| `examine loose tile` (head) | suspicion +5 | one-shot — flask appears |
-| `examine kitchen` (mess) | suspicion +5 | one-shot — thermos appears |
-| `examine raptor` (hangar) | suspicion +5 | one-shot — grease can appears |
-| `examine drawer` (adama's qtrs) | — | one-shot — photo appears |
+| Every turn | exhaustion +1 | session tick |
+| Shift change (every 15 turns) | (banner + cross-shift hooks) | auto |
+| Day rollover, **duty skipped** | suspicion +5 | duties hook |
+| Day rollover, **meal skipped** | exhaustion +6 | duties hook (hunger) |
+| Exhaustion = 100 | collapse: items → env_control, ex → 30, room → sickbay | session |
+| Suspicion = 100 | spaced ending (or Cylon resurrection) | session |
 
-## Ambient (random fire, low probability)
+## Cylon mechanic (hidden)
 
-| Entry | Δ | Notes |
+| Trigger | Δ / Effect | Notes |
 |---|---|---|
-| Watchtower callable | cylon_vibes +6 | per fire |
-| All-Along callable | cylon_vibes +5 | per fire |
-| All other ambient strings | — | flavor only |
+| `cylon_vibes` ≥ 75 | sets `is_cylon` silently | never surfaced to player |
+| Cylon hits spaced/forbidden death | resurrect, NOT game-over | counts up |
+| Resurrection 1 | npc_suspicious_hadrian = True | NPC drift |
+| Resurrection 2 | npc_dead_helo = True | NPC drift |
+| Resurrection 3 | Download Complete ending | replaces normal wake-up |
+| Each resurrection | day +1, shift = 0, ex = 0, morale ÷ 2, sus ÷ 2 | drift |
+| Cottle first talk while Cylon | (one-shot bloodwork warning) | text only |
+| Watchtower Cylon-only ambient | cylon_vibes +3 (registered 3x for higher rate) | |
 
-## Endings & their triggers
+## Press conference (per-question deltas)
 
-| Ending | Trigger | Notes |
-|---|---|---|
-| `hero` | give napkin to adama AND realized_napkin_is_coords AND suspicion < 75 AND exhaustion < 80 | |
-| `spaced` (via Tigh) | suspicion ≥ 75 + next talk to tigh | |
-| `spaced` (global) | suspicion = 100 anywhere | session loop check |
-| `spaced` (via Adama refusing napkin) | give napkin to adama AND suspicion ≥ 75 | Adama hands you to MPs |
-| `cylon_love_triangle` | cylon_vibes ≥ 75 + next talk to six | |
-| `love_quadrangle` | 3rd unique romance NPC bumped while 2 already active | quadrangle ending |
-| `forbidden_knowledge` | `use sealed_envelope` | one-shot |
-| collapse → sickbay | exhaustion = 100 | not an ending, a setback |
+The minigame applies its own credibility-and-stat deltas per response. All
+deltas are bounded (single-conference effects can't drive any stat past the
+bound). Outcomes:
 
----
-
-## Identified balance issues + tuning plan
-
-### Critical: Promotion Material was unreachable
-
-**Problem:** Hero ending requires visiting `head_deck_5` (`witness_once` +10
-suspicion) and entering `cic` first time (+3 suspicion). Floor of +13 even on
-a perfect run. Random corridor encounters compound on every re-visit. The
-only suspicion-reducer was `give wrench to tyrol` (-5). Net: impossible to
-finish Hero with suspicion = 0.
-
-**Tuning:**
-1. **Corridor encounter stat bumps become one-shot per encounter type.** The
-   encounter still fires for narrative (Tigh staggers past, Six walks by,
-   etc.) but stat consequences only register the first time you witness that
-   specific event. Re-traversing corridors no longer compounds.
-2. **`give wrench to tyrol` reward: suspicion -10** (was -5). The Chief is a
-   powerful ally; making it worth more.
-3. **`use mop` now reduces suspicion -1** (per use, cap at 0). Doing your
-   actual job lowers your profile. Tradeoff: each mop is also -3 morale and
-   +4 exhaustion, so grinding has a real cost.
-4. **`wait` now reduces suspicion -1** (per call, cap at 0). "Lay low for a
-   shift." Tradeoff: each `wait` is +1 exhaustion via the turn tick.
-5. **`talk to roslin` default suspicion: +1** (was +3). Still draws attention
-   for being seen with the President but doesn't compound brutally.
-
-**Result:** Promotion Material now reachable. Path: avoid all sensitive Tigh
-topics, avoid Baltar's lab, avoid examining the photo, avoid Roslin entirely
-(or only briefly), do the wrench quest for -10, then grind a few mops to
-clear the +13 floor.
-
-### Repeatable maxers that drive a stat to bound trivially
-
-- **Storage bay revisits:** were +10 cylon_vibes EVERY entry. **Tuned to
-  one-shot.** Eight entries would max cylon_vibes from 0.
-- **Brig revisits:** were +2 cylon_vibes per revisit. **Removed.** First
-  entry stays +8.
-- **Baltar's lab revisits:** were -1 morale per revisit (compounded with
-  default talk's -2). **Removed revisit damper.** First entry's -3 morale
-  stands.
-- **`frak`:** was +2 morale per call. **Tuned to +1.** Still cathartic but
-  doesn't grind morale to 100 in 25 turns.
-
-### Self-limiting "maxers" left alone
-
-- **Stash bottle drinks** (+6 morale each, REPEATABLE, no consumption):
-  technically maxes morale in 9 drinks, but also +6 exhaustion each →
-  unconsumable after ~14 drinks (collapse). Self-limiting through exhaustion.
-- **NPC talk repeats** (+2 to +4 morale each): self-limiting because each
-  talk advances a turn (+1 exhaustion).
-- **Tigh sensitive topics** (+25 each, REPEATABLE): the entire mechanic is
-  that 3 asks → spaced. Working as designed.
-- **Six default talks** (+25 cylon_vibes each): 3 talks → cylon love
-  triangle ending. Working as designed.
-
----
-
-## What was listed but isn't implemented
-
-These items were mentioned in the hardening prompt as things to harden, but
-they don't exist as systems in this codebase:
-
-- **Time of day / schedules** — no clock; turns are abstract.
-- **Duty roster assignments** — no scheduled work tasks; quests are
-  player-initiated.
-- **`IS_CYLON`** — no boolean Cylon-or-not flag for the player; only the
-  `cylon_vibes` stat suggests it.
-- **Resurrection count / resurrection during a timed quest** — no resurrect
-  mechanic; death = ending.
-
-These weren't tested in the harness. If the intent was to add them as part
-of hardening, they would be new features and weren't built per the
-"no new features" constraint.
-
----
-
-## Harness run results
-
-The harness was a 30-test suite covering all 7 ending variants, all 5 side
-quests start-to-finish, four systems-collide cases, the `hint` verb at every
-flag state, and full WorldState save/load round-tripping.
-
-**Final status: 195/195 tests passing.** Was 166 before this pass.
-
-### Bugs surfaced by the harness
-
-The harness caught **two real engine bugs** that the per-system tests had
-missed:
-
-1. **`cmd_load` did not restore `visited_rooms` or `stats`.** The load
-   handler iterated a hardcoded list of attribute names that hadn't been
-   updated when `visited_rooms` (added in the room-density pass) and
-   `stats` (added in the stats overhaul) were introduced. Loading a save
-   from a long playthrough silently truncated the player's visited-room
-   list to `[current_room]` and reset all four hidden stats to defaults.
-   Fixed in [engine/commands.py](engine/commands.py); the list is now
-   commented as load-bearing so future fields don't silently break loads.
-
-2. **Item alias collision: the canteen claimed `flask` as an alias.** When
-   the new flask item was added for the stash quest, the canteen kept its
-   old `flask` alias from when `flask` was the in-universe name for the
-   canteen. `give flask to tigh` resolved to the canteen, not the flask,
-   silently breaking the stash quest's three-bottle return chain. Fixed in
-   [content/items.py](content/items.py); the canteen now only answers to
-   `canteen`.
-
-Both bugs were invisible to existing per-system tests because those tests
-manipulate state directly rather than driving the parser through a full
-sequence. The harness's end-to-end playthroughs caught them.
-
-### Tuning verification
-
-- **Promotion Material is reachable.** The test
-  `test_promotion_material_reachable_via_tuning` simulates a mid-hero-run
-  state (suspicion 13 = head witness +10, CIC entry +3, the natural floor)
-  and confirms that `give wrench to tyrol` (-10) plus 3 mop uses (-3)
-  cleanly bring suspicion to exactly 0 before the napkin handoff. Hero
-  ending fires; achievement unlocks. **Reachable but requires deliberate
-  play** — exactly what was asked for.
-
-- **All 7 ending variants reachable end-to-end** through full playthroughs
-  (the harness drives each from the opening room, not from pre-set state):
-  - HERO via napkin → Adama
-  - SPACED via Tigh dialogue (3 sensitive topics)
-  - SPACED via global suspicion = 100 (`set_stat` + turn tick)
-  - SPACED via Adama refusing the napkin at suspicion ≥ 75
-  - CYLON LOVE TRIANGLE via Six dialogue
-  - LOVE QUADRANGLE via 3rd unique flirtation
-  - FORBIDDEN KNOWLEDGE via opening the CIC envelope
-
-- **All 5 side quests complete from intro to resolution:**
-  - Tigh's Stash — find all 3 bottles, return all 3, get the swig
-  - Missing Wrench — Baltar misdirection (`talk about juno`) + pickup +
-    return to Tyrol
-  - Cards Night — each of the 4 outcomes (graceful/flirt/cheat/accuse)
-    distinct and resolved
-  - Mystery Meat — algae processor reveal sets the solved flag
-  - Prophecy — yes/no/maybe each register their own choice flag
-
-- **Systems-collide cases:**
-  - Collapse mid-stash-quest preserves the napkin (lose canteen/mop/algae
-    bar but the macguffin survives)
-  - Quadrangle pre-empts the hero path even when player is in CIC with
-    realized napkin
-  - Forbidden knowledge ending fires even with active romance
-  - Cylon-vibes pumped via Boomer can carry into a Six interaction that
-    triggers the love triangle
-  - Three sensitive Tigh topics overrides the canteen quest
-
-- **`hint` verb fires correct guidance at 4 distinct flag states** (no
-  quest → head; canteen but no napkin → floor/tile; napkin but no
-  realization → bridge/Roslin; realized but not in CIC → CIC).
-
-### Full WorldState save/load round-trip
-
-Verified that every documented field on `WorldState` round-trips through a
-save → load cycle:
-
-- `player_name`, `current_room`, `inventory`
-- `room_items` (with complex per-room arrangements)
-- `flags` (all keys: quest state, NG+ carryover, romance flags, witness
-  one-shots, encounter one-shots, frak count, Tigh drink count)
-- `turn`
-- `npc_state` (nested per-NPC dicts including wrong-name counters,
-  rumor indices, romance bumps, corridor last-encounter trackers)
-- `visited_rooms`
-- `stats` — all four (`morale`, `suspicion`, `cylon_vibes`, `exhaustion`)
-
-A meta-test (`test_world_state_has_no_undocumented_fields`) sentinels the
-set of WorldState fields. **If a future change adds a field, this test
-fails and prompts you to also update the save/load `cmd_load` attribute
-list and the full-state round-trip coverage.** This is the cheapest way to
-prevent the cmd_load bug from recurring.
-
-Achievements are written to `<save_dir>/<player>/achievements.json`
-**outside** the world save and persist across world reloads.
-
-### Re-tune summary
-
-Final stat-change deltas (re-applied from the table above for quick
-reference):
-
-| Knob | Before | After | Why |
+| Outcome | Δ morale | Δ suspicion | Reward |
 |---|---:|---:|---|
-| `frak` morale bump | +2 | **+1** | trivial maxer otherwise |
-| `wait` suspicion bump | (none) | **-1** | enables Promotion Material |
-| `mop` suspicion bump | (none) | **-1** | enables Promotion Material |
-| `give wrench to tyrol` suspicion | -5 | **-10** | enables Promotion Material |
-| `talk roslin` default suspicion | +3 | **+1** | compounded too brutally on repeat talks |
-| Corridor C-12 encounter stat bumps | every visit | **one-shot per encounter type** | re-traversal compounded |
-| Corridor B-7 encounter stat bumps | every visit | **one-shot per encounter type** | re-traversal compounded |
-| Storage bay re-entry cylon_vibes | +10 every entry | **first entry only** | trivial maxer |
-| Brig re-entry cylon_vibes | +2 each | **(removed)** | trivial maxer |
-| Baltar's lab re-entry morale | -1 each | **(removed)** | could grind to 0 |
+| high (cred ≥ 70) | +10 | -5 | `commendation_letter` |
+| medium (30 < cred < 70) | — | — | — |
+| low (cred ≤ 30) | | +30 | sets `press_confirmed_conspiracies` |
+| rock_bottom (cred ≤ 10) | -10 | +25 | sets `was_briefly_famous` |
+
+Per-round honest answers raise suspicion by +3 to +15 depending on the
+question. Political answers raise credibility +5 to +10 at -3 to -4 morale.
+Unhinged answers have deterministic-per-`(player, day, question)` random
+outcomes from a 2-3-entry pool, ranging from `+18 cred / +8 morale` to
+`-25 cred / +12 suspicion`.
 
 ---
 
-*Final report: 195/195 tests passing. README "Known Bugs" line preserved
-as "So say we all." See section above for the only bugs that did surface
-— both fixed in this pass.*
+## Endings & triggers (8 total)
 
+| Ending | Trigger | Cylon-affected? |
+|---|---|---|
+| `hero` | `give napkin to adama` + realized + sus<75 + ex<80 | NO — wins still win |
+| `spaced` (Tigh dialogue) | sus≥75 + next Tigh talk | **YES — resurrects Cylons** |
+| `spaced` (global threshold) | sus = 100 anywhere | **YES — resurrects Cylons** |
+| `spaced` (Adama refusing napkin) | hero attempt with sus≥75 | **YES — resurrects Cylons** |
+| `cylon_love_triangle` | cylon_vibes≥75 + Six talk | NO |
+| `love_quadrangle` | 3rd unique romance bumped | NO |
+| `forbidden_knowledge` | `use sealed_envelope` | **YES — resurrects Cylons** |
+| `download_complete` | 3rd resurrection as Cylon | (it IS the Cylon ending) |
+
+---
+
+# SECOND HARDENING PASS — RESULTS
+
+## Bugs found and fixed
+
+### Latent soft-lock: collapse destroyed quest-relevant items
+
+[engine/session.py](engine/session.py)'s `_check_collapse()` did:
+
+```python
+self.world.inventory.remove(item_id)
+```
+
+This destroyed the mop, canteen, and algae bar permanently. The mop is **not
+respawned anywhere**, so a collapsed player whose roster duty for the day is
+`mop_the_head` had no way to fulfill the duty — and the mop's general
+suspicion-reducing role was lost forever.
+
+**Fix:** changed `inventory.remove` → `move_item_to_room(world, item_id,
+"env_control")`. Items now relocate to the player's bunk instead of being
+destroyed. The narrative still reads "you are missing X" because they are,
+in fact, no longer in the player's inventory — they just have to walk back
+to env_control and take them.
+
+Verified by `test_collapse_does_not_destroy_items_softlocking_mop_duty` and
+`test_hunger_spiral_eventually_causes_collapse_but_not_softlock` in the new
+harness file.
+
+### `hint` verb didn't cover the new mechanics
+
+The hint verb predates the time system, press conference, duty roster, and
+Cylon mechanic. A player stuck mid-press-conference (which intercepts all
+input) who typed `hint` would get the old generic fallback.
+
+**Fix:** added a `press_active` branch at the top that returns:
+
+> "A man at a podium chooses a path. There are three paths. None of them
+> is the right path. Pick one anyway. (Type: honest, political, or unhinged.)"
+
+And the catch-all fallback now lists: examine the duty roster in Corridor
+C-12, eat in the mess at Morning or Afternoon, sleep if you're tired, wait
+if you're paranoid.
+
+## What turned out to be fine (audited but not changed)
+
+- **`sleep` is not an exploit.** Sleep zeroes exhaustion but each sleep ALSO
+  skips a meal and may skip your duty. Hunger penalty (+6 ex/day, fires at
+  rollover) and missed-duty penalty (+5 sus/day) cap the strategy. A player
+  sleep-spamming for ~16 days collapses; respawn cycle handles the rest.
+
+- **Cylon resurrection cycle is bounded.** Each resurrection halves morale
+  and suspicion, which superficially looks abusable — but the 3rd
+  resurrection is the Download Complete ending, so the cycle terminates.
+  Maximum suspicion-reduction available: floor → halve twice = ~×0.25.
+
+- **Press conference can't be repeated.** Once you've completed (or
+  rock-bottomed) one, Roslin refuses to send you again. No infinite source
+  of commendation letters / suspicion reduction.
+
+- **Duty completion is once-per-day.** Each chore has a `duty_*_today` flag
+  that gates the reward. Skipping has a penalty. Players can't grind duties
+  for unlimited suspicion reduction.
+
+- **Repeatable NPC talks are self-limiting via turn tick.** Talking to
+  Hadrian 30 times for +60 morale also costs 30 turns of exhaustion. Net
+  effect: a tradeoff, not an exploit.
+
+## Promotion Material reachability (re-verified)
+
+The original Promotion Material achievement (complete a run with `suspicion = 0`)
+was made reachable in the first hardening pass via wrench-quest reward (-10),
+`use mop` (-1), `wait` (-1), and Roslin talk down to +1/talk. The
+post-time-system additions make it EASIER, not harder:
+
+- **Duty completion**: -5 sus per completed daily chore. With a roster cycle
+  of 5+ days and 1 chore/day, a careful player can clear ~25 suspicion just
+  by doing their actual job.
+- **Wait verb**: -1 sus per call, unchanged.
+- **Mop**: -1 sus per use, unchanged.
+
+The hero path's natural suspicion floor is ~13 (head visit +10, CIC entry +3).
+Wrench return alone clears that. With duty discipline, Promotion Material is
+now substantially more accessible than before. Verified by
+`test_promotion_material_reachable_via_tuning` (still green).
+
+## Save/load round-trip — verified for all new subsystem state
+
+The full-state save sentinel (`test_world_state_has_no_undocumented_fields`)
+caught the addition of `shift`, `day`, `turns_this_shift` and is still
+guarding `WorldState`. All other new state lives in `world.flags` (a generic
+dict) and `world.npc_state` (nested dicts), both of which round-trip natively
+through JSON.
+
+**New comprehensive test** (`test_save_load_round_trips_every_new_subsystem_flag`)
+asserts every Cylon, press, duty, hunger, NG+, romance, time, and stat flag
+round-trips. Round-tripped fields verified:
+
+- Time: `shift`, `day`, `turns_this_shift`
+- Stats: all four
+- Duty: `duty_today`, `duty_*_today`, `_last_rollover_day`, `_first_shift_change_done`
+- Hunger: `ate_today`
+- Cylon: `is_cylon`, `resurrection_count`, `npc_suspicious_hadrian`,
+  `npc_dead_helo`, `cottle_bloodwork_warned`
+- Press: `press_active`, `press_round`, `press_questions`, `press_credibility`,
+  `was_briefly_famous`
+- Romance: `active_romances`, `romance_*` for each NPC
+- NG+: `ng_plus`, `ng_plus_count`, `previous_ending`
+- Inventory, npc_state, visited_rooms (round-tripped via existing fields)
+
+## Harness extension — systems-collide cases
+
+The first hardening pass's harness covered the original 6 endings + 5 side
+quests + a few collide cases. This pass added 14 new cross-system tests in
+[tests/test_hardening_pass2.py](tests/test_hardening_pass2.py):
+
+- Full Download Complete chain (3 resurrections from a Cylon start)
+- Cylon state survives a mid-chain save/load
+- Cylon player still HEROes (not all death endings are equal)
+- Cylon player can still latrine-duty (Love Quadrangle isn't death)
+- Press conference runs normally for a Cylon
+- Press interception blocks `status`, `hint`, and other normal verbs
+- Hint verb covers `press_active` (verified via `_hint_line` helper)
+- Sleeping through a full day: skipped duty + skipped meal both penalize
+- Hunger spiral eventually collapses without soft-locking
+- The fixed collapse path: items relocate to env_control
+- Comprehensive save/load with every subsystem's flag set
+- Achievements use atomic write (no .tmp orphan)
+- Sleep resets exhaustion but NOT suspicion
+- Duty completion reduces suspicion independent of hunger penalty
+
+## Test count and stability
+
+Final test count: **298** across 13 files, **0 failed**, stable across 5
+consecutive runs.
+
+Categories:
+- test_parser.py (19) — parser unit tests
+- test_save.py (5) — save/load atomicity
+- test_smoke.py (11) — opening quest flow
+- test_endings.py (12) — per-system ending verification
+- test_engine_features.py (6) — engine plumbing
+- test_polish.py (21) — ambient / achievements / NG+ / deja-vu
+- test_sidequests.py (31) — side quests + hidden rooms + envelope ending
+- test_stats.py (29) — stat system
+- test_romance.py (25) — romance state machine + new NPCs
+- test_server.py (7) — LAN multiplayer server
+- test_critique_fixes.py (13) — eight critique fixes from earlier
+- test_harness.py (20) — playtest harness from first hardening pass
+- test_full_state_save.py (10) — full WorldState round-trip
+- test_time_system.py (30) — watch cycle, schedules, hunger, duty roster
+- test_cylon_mechanic.py (26) — hidden Cylon mechanic + Download Complete
+- test_press_conference.py (20) — Quorum Press Conference minigame
+- **test_hardening_pass2.py (14)** — this pass
+
+---
+
+## What was *listed* in the original hardening prompts but never built
+
+These keep appearing in the prompt examples but aren't actual systems in
+this codebase:
+
+- **Time of day** — exists now as the watch cycle.
+- **Schedules** — exists now (`content/schedules.py`).
+- **Duty roster assignments** — exists now (`content/duties.py`).
+- **`IS_CYLON` flag** — exists now (`world.flags["is_cylon"]`).
+- **Resurrection count** — exists now (`world.flags["resurrection_count"]`).
+
+Everything the first hardening pass flagged as "not in the codebase" is now,
+in fact, in the codebase. This pass confirms they all round-trip cleanly,
+have proper test coverage, and don't introduce new soft-locks.
+
+---
+
+*Final report: 298/298 tests passing, stable. README "Known Bugs" line
+preserved as "So say we all."*

@@ -571,6 +571,15 @@ def _hint_line(world) -> str:
     f = world.flags
     inv = world.inventory
 
+    # Active press conference takes priority — the player has no normal verbs
+    # right now and may not know it.
+    if f.get("press_active"):
+        return (
+            "Adama, in your head, says: 'A man at a podium chooses a path. There\n"
+            "are three paths. None of them is the right path. Pick one anyway.'\n"
+            "(Type: honest, political, or unhinged.)"
+        )
+
     if f.get("__ended__"):
         return (
             "Some shifts end. The shift ended. You can begin again, or you can\n"
@@ -631,7 +640,9 @@ def _hint_line(world) -> str:
     return (
         "Adama, in your head, says: 'The frakkin' tide of duty is constant, son.\n"
         "When in doubt, do something. When that fails, do something ELSE.'\n"
-        "(Wander a corridor. Talk to a specialist. Examine a thing. Mop a deck.)"
+        "(Wander a corridor. Talk to a specialist. Examine a thing. Mop a deck.\n"
+        "Examine the duty roster in Corridor C-12. Eat in the mess at Morning\n"
+        "or Afternoon. Sleep if you're tired. Wait if you're paranoid.)"
     )
 
 

@@ -202,11 +202,15 @@ class Session:
             "Then there is a quality of silence you have only previously associated "
             "with sleep, vacuum, and that one time in basic."
         )
-        # Lose items (except napkin — the player's grip is divine)
+        # "Lose" items (except napkin — the player's grip is divine). The items
+        # are RELOCATED to env_control rather than destroyed, so the player can
+        # re-take them. Destroying them outright soft-locks the "mop the head"
+        # duty if today's roster lists it and the player has just collapsed.
+        from .world import move_item_to_room
         lost = []
         for item_id in list(self.world.inventory):
             if item_id in COLLAPSE_LOSES_ITEMS:
-                self.world.inventory.remove(item_id)
+                move_item_to_room(self.world, item_id, "env_control")
                 lost.append(item_id)
         # Move to sickbay
         self.world.current_room = "sickbay"
