@@ -253,6 +253,54 @@ register_item(Item(
 ))
 
 
+# ─── cigarette (Doc Cottle's contraband) ──────────────────────────────────────
+
+
+def cigarette_on_use(world):
+    if world.flags.get("cigarette_smoked"):
+        return (
+            "It's already smoked, specialist. There's no cigarette. There's only the\n"
+            "lingering smell of regulation tobacco and questionable medical advice."
+        )
+    world.flags["cigarette_smoked"] = True
+    if "cigarette" in world.inventory:
+        world.inventory.remove("cigarette")
+    bump_stat(world, "morale", 6)
+    bump_stat(world, "exhaustion", 4)
+    return (
+        "You light it. You inhale. It is genuinely terrible. It is also genuinely\n"
+        "great. The world becomes, for one moment, exactly the manageable size it\n"
+        "should always have been. You exhale a long blue line. Somewhere, Cottle is\n"
+        "smiling. He has not smiled in eight years, so he will not know to attribute\n"
+        "it to you."
+    )
+
+
+def cigarette_on_eat(world):
+    return "Don't eat the frakkin' cigarette, specialist."
+
+
+def cigarette_on_drink(world):
+    return "It is not a beverage. Cottle would yell at both of us."
+
+
+register_item(Item(
+    id="cigarette",
+    name="slightly-bent cigarette",
+    aliases=["cigarette", "smoke", "cig"],
+    description=(
+        "A regulation cigarette from Doctor Cottle's private supply. Slightly bent. "
+        "Smells like the inside of a fire suppression panel after an incident. The "
+        "filter is, in defiance of all known regulations, a fingertip-sized scrap of "
+        "paper from a religious tract."
+    ),
+    takeable=True,
+    on_use=cigarette_on_use,
+    on_eat=cigarette_on_eat,
+    on_drink=cigarette_on_drink,
+))
+
+
 # Patch examine to be dynamic — we'll resolve it in commands.cmd_examine via a callback.
 # Simpler approach: override description via a runtime check in the examine handler.
 # We do that by attaching the dynamic text function as an attribute the handler checks.

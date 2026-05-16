@@ -497,10 +497,11 @@ register_room(Room(
 
 
 HANGAR_ENCOUNTERS = [
-    "Chief Tyrol is yelling at a Viper. The Viper is taking it well.",
     "A deckhand is sleeping under a Raptor's nose gear. Their snore is rhythmic. The Raptor seems comforted.",
     "A pilot you don't recognize is doing a pre-flight on a ship that is, technically, on fire. The fire is small. The pilot is committed.",
     "Two specialists are arguing about whether a missing wrench was stolen by a Cylon or a different specialist. They are leaning toward Cylon. Out of optimism.",
+    "A Raptor's intake belches steam. Three deckhands stare at it. The intake belches steam again. Nobody moves. The Raptor exhales like it's bored of you.",
+    "Tyrol shouts something across the deck about 'protocol' and 'frakking deck six' without breaking eye contact with whatever he's holding.",
 ]
 
 
@@ -529,12 +530,11 @@ register_room(Room(
         "out": "corridor_b",
     },
     items=[],
-    npcs=[],
+    npcs=["tyrol", "boomer"],
     on_enter=hangar_on_enter,
     on_examine={
         "viper": "A Viper. Beautiful. Lethal. Probably leaking. You are not authorized to fix this one. You wish you were.",
-        "raptor": "A Raptor. Squat, ugly, beloved. Someone has spray-painted 'LUCKY' on the nose. The paint is fresh.",
-        "tyrol": "Chief Tyrol, mid-shout. He does not see you. He sees the wrench he is about to throw at someone else.",
+        "raptor": "A Raptor. Squat, ugly, beloved. Someone has spray-painted 'LUCKY' on the nose. The paint is fresh. Boomer is standing very close to it.",
         "wrench": "A wrench. Inert. Innocent. About to be involved in something.",
     },
 ))
@@ -630,7 +630,7 @@ register_room(Room(
         "out": "corridor_a",
     },
     items=[],
-    npcs=["roslin"],
+    npcs=["roslin", "cottle", "helo"],
     on_enter=sickbay_on_enter,
     on_examine={
         "beds": (
@@ -866,7 +866,7 @@ register_room(Room(
         "out": "corridor_a",
     },
     items=[],
-    npcs=["adama"],
+    npcs=["adama", "gaeta", "dualla"],
     on_enter=cic_on_enter,
     on_examine={
         "plot": (

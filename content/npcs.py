@@ -6,6 +6,102 @@ from engine.registry import register_npc
 from engine.world import bump_stat, get_stat, move_item_to_inventory, move_item_to_room
 
 
+# ─── Romance state machine ─────────────────────────────────────────────────────
+# Each romance NPC has 3 escalating beats; beat 4 = "it's complicated" terminal.
+# Starting a 3rd simultaneous flirtation triggers the love-quadrangle ending.
+
+ROMANCE_NPCS = {"starbuck", "six", "helo", "dualla"}
+
+ROMANCE_DISPLAY_NAMES = {
+    "starbuck": "Lieutenant Thrace",
+    "six": "your shift supervisor",
+    "helo": "Captain Agathon",
+    "dualla": "Petty Officer Dualla",
+}
+
+
+def _bump_romance(world, npc_id):
+    """Advance a flirtation by one beat. Returns one of:
+        'quadrangle'   — third unique partner; trigger the quadrangle ending
+        'complicated'  — this NPC just hit beat 4 (locked out)
+        'already_done' — this NPC was already at the terminal beat
+        'beat1'/'beat2'/'beat3' — normal progression
+    """
+    assert npc_id in ROMANCE_NPCS, f"unknown romance npc: {npc_id}"
+    actives = world.flags.setdefault("active_romances", [])
+    key = f"romance_{npc_id}"
+    cur = world.flags.get(key, 0)
+
+    if cur >= 4:
+        return "already_done"
+
+    if cur == 0:
+        if len(actives) >= 2 and npc_id not in actives:
+            return "quadrangle"
+        if npc_id not in actives:
+            actives.append(npc_id)
+
+    new = cur + 1
+    world.flags[key] = new
+
+    if new >= 4:
+        if npc_id in actives:
+            actives.remove(npc_id)
+        return "complicated"
+
+    return f"beat{new}"
+
+
+def _love_quadrangle_ending(world, would_be_third) -> HandlerResult:
+    actives = list(world.flags.get("active_romances", []))
+    a = ROMANCE_DISPLAY_NAMES.get(actives[0], actives[0]) if actives else "someone"
+    b = ROMANCE_DISPLAY_NAMES.get(actives[1], actives[1]) if len(actives) > 1 else "someone else"
+    c = ROMANCE_DISPLAY_NAMES.get(would_be_third, would_be_third)
+    return trigger_ending(
+        world,
+        "love_quadrangle",
+        f"Three weeks pass. You do not remember most of them.\n\n"
+        f"What you DO remember is the moment {a} found {b}'s sidearm in your rack.\n"
+        f"And the moment {b} found {a}'s comb in your kit. And the moment {c}, who\n"
+        f"had been hoping to be the next entry, found the previous two having a\n"
+        f"private conversation about you in a corridor.\n\n"
+        f"At 1600 hours, you receive a single new posting on your tablet:\n\n"
+        f"  PERMANENT LATRINE DUTY. DECK FIVE.\n"
+        f"  AND DECK SEVEN. AND DECK TWELVE.\n"
+        f"  AND ALSO, FOR REASONS NOBODY WILL EXPLAIN,\n"
+        f"  ADMIRAL ADAMA'S PRIVATE HEAD.\n"
+        f"  STARTING IMMEDIATELY.\n\n"
+        f"Apollo, on his way past, claps you on the shoulder. 'Brutal. Good luck,\n"
+        f"specialist.' He has no idea what is happening. He is, somehow, the most\n"
+        f"innocent person in this entire affair.\n\n"
+        f"You salute. Nobody returns it.\n"
+        f"You frak. Loudly. Out loud.\n"
+        f"You eat an algae bar.\n"
+        f"You start mopping.\n\n"
+        f"── ENDING: LOVE QUADRANGLE (PERMANENT LATRINE DUTY) ──"
+    )
+
+
+def _romance_apply(world, npc_id, beat_texts, complicated_text):
+    """Helper that performs the bump and returns the right response text or ending.
+
+    beat_texts: list of three strings for beat1/2/3
+    complicated_text: string for the 'it's complicated' terminal beat
+    """
+    result = _bump_romance(world, npc_id)
+    if result == "quadrangle":
+        return _love_quadrangle_ending(world, npc_id)
+    if result == "complicated":
+        bump_stat(world, "suspicion", 5)  # word gets around
+        return complicated_text
+    if result == "already_done":
+        return complicated_text
+    if result.startswith("beat"):
+        idx = int(result[-1]) - 1
+        return beat_texts[idx]
+    return beat_texts[0]  # fallback
+
+
 # ─── Colonel Tigh ──────────────────────────────────────────────────────────────
 
 TIGH_WRONG_NAMES = [
@@ -541,15 +637,42 @@ def starbuck_on_talk(world, topic):
 
     if topic_lower in ("making out", "make out", "kiss", "kissing"):
         bump_stat(world, "morale", 10)
-        return (
-            "She raises an eyebrow. She raises THE eyebrow. From across the room,\n"
-            "Apollo makes a noise that is half whimper and half wedding vow.\n\n"
-            "Starbuck stands up. She walks over. She kisses you. It lasts six full\n"
-            "seconds. It tastes like cigars, ambrosia, and very specifically a future\n"
-            "she has already decided is not yours. She steps back. She wipes her\n"
-            "mouth with the back of her hand.\n\n"
-            "'You can go now, specialist.' She has already forgotten you.\n\n"
-            "Apollo is staring. Apollo's mouth is open. Apollo will need a moment."
+        return _romance_apply(
+            world,
+            "starbuck",
+            beat_texts=[
+                # beat 1 — the canonical kiss
+                "She raises an eyebrow. She raises THE eyebrow. From across the room,\n"
+                "Apollo makes a noise that is half whimper and half wedding vow.\n\n"
+                "Starbuck stands up. She walks over. She kisses you. It lasts six full\n"
+                "seconds. It tastes like cigars, ambrosia, and very specifically a future\n"
+                "she has already decided is not yours. She steps back. She wipes her\n"
+                "mouth with the back of her hand.\n\n"
+                "'You can go now, specialist.' She has already forgotten you.\n\n"
+                "Apollo is staring. Apollo's mouth is open. Apollo will need a moment.",
+                # beat 2
+                "She looks up from her cards. 'Back, huh.' She tilts her head. She's\n"
+                "weighing something. She decides yes. She kisses you again. This one is\n"
+                "different. This one is on purpose. Apollo, in your peripheral vision,\n"
+                "stands up and sits down and stands up again and sits down again.\n\n"
+                "She breaks off. 'Don't read too much into that, specialist.' She is\n"
+                "reading too much into it. You can tell. Apollo is having a small\n"
+                "private religious experience and Starbuck is pretending not to see it.",
+                # beat 3
+                "She does not kiss you this time. She looks at you for a long moment.\n"
+                "Her eyes are doing something complicated, and so are her hands, and\n"
+                "so is the air between you.\n\n"
+                "'Listen, specialist,' she says. Her voice is quieter than you have\n"
+                "ever heard it. 'You are a nice problem. You are not MY problem. I am\n"
+                "the problem. I AM the problem. Go find a problem that doesn't already\n"
+                "have a problem.'\n\n"
+                "She squeezes your shoulder. It is, somehow, the worst part.",
+            ],
+            complicated_text=(
+                "She looks up. She looks at you. She looks away. 'Specialist. We had a\n"
+                "thing. We had a thing for like, an hour. Move on. I have.' She has not.\n"
+                "But she has decided she has, which is, for Starbuck, the same thing."
+            ),
         )
 
     if topic_lower in ("apollo", "captain", "lee"):
@@ -925,10 +1048,32 @@ def six_on_talk(world, topic):
         )
 
     if topic_lower in ("god", "gods", "faith", "love"):
-        return (
-            "Her face becomes very still. Very lit. 'God is love, specialist.\n"
-            "Love is everything. Everything is becoming. I think you and I are\n"
-            "becoming.'"
+        # Romance bump alongside the cylon_vibes spike that already happened above.
+        # If this is their 3rd flirtation, the quadrangle fires here.
+        return _romance_apply(
+            world,
+            "six",
+            beat_texts=[
+                "Her face becomes very still. Very lit. 'God is love, specialist.\n"
+                "Love is everything. Everything is becoming. I think you and I are\n"
+                "becoming.'",
+                "She takes one step closer. The corridor narrows further.\n\n"
+                "'I felt you reach for me just now. You don't know what for. I do.\n"
+                "It will take time. It will take patience. It will take love.\n"
+                "We have all three. Don't we, specialist.'\n\n"
+                "It is not a question.",
+                "She places a single fingertip on your sternum.\n\n"
+                "'Soon,' she says. 'You will come with me. You will come willingly.\n"
+                "I am patient with you because you are precious to me. You are mine.\n"
+                "You have always been mine. You just hadn't met me yet.'\n\n"
+                "Her finger stays where it is. The corridor stays where it is. You\n"
+                "stay, mostly, where you are.",
+            ],
+            complicated_text=(
+                "She smiles. The smile is patient. 'I will wait. I am exceptionally\n"
+                "good at waiting. Find me when you are ready, specialist. I will\n"
+                "still be becoming.'"
+            ),
         )
 
     if topic_lower in ("apollo", "starbuck"):
@@ -1055,4 +1200,785 @@ register_npc(NPC(
         "is, somehow, still the most powerful person in the room."
     ),
     on_talk=roslin_on_talk,
+))
+
+
+# ─── Chief Tyrol ───────────────────────────────────────────────────────────────
+
+TYROL_DEEP_GOSSIP = [
+    "'Right. You got it. The XO and the Old Man have a STANDING APPOINTMENT in\n"
+    "Adama's quarters. Tuesdays. THURSDAYS. Sometimes Fridays. Door locked. Glasses\n"
+    "out. The XO comes out humming. THE XO DOES NOT HUM, SPECIALIST. The XO HUMMING\n"
+    "is a frakkin' sign.'",
+
+    "'Boomer? Yeah. She's been weird. She doesn't sleep. She SAYS she sleeps. But\n"
+    "I clock her flying hours and her on-shift hours and there is no math that adds\n"
+    "to sleep. Last week she asked me, very calmly, if I dream about water. I told\n"
+    "her I dream about off-shift.'",
+
+    "'Helo's back. You know that? Did you frakkin' KNOW that? He just walks in last\n"
+    "week like he hadn't been on Caprica for half a frakkin' year. Smells like he\n"
+    "hasn't slept in months. Asks me where Boomer is. I told him I don't know where\n"
+    "Boomer is. I DO know where Boomer is. I'm not telling him.'",
+
+    "'Apollo and Starbuck? Don't get me started. Don't. They have been having the\n"
+    "same fight for SIX YEARS, specialist. SIX YEARS. They never resolve it. They\n"
+    "never WILL resolve it. They are the engine of this ship. They will be having\n"
+    "this fight when the Cylons board us. That'll be the last frakkin' sound.'",
+]
+
+
+def _tyrol_receive_algae(world):
+    if "algae_bar" in world.inventory:
+        world.inventory.remove("algae_bar")
+    world.flags["tyrol_owes_gossip"] = True
+    bump_stat(world, "morale", 3)
+    return (
+        "Tyrol's eyes track the algae bar like it's a sacred relic. He takes it\n"
+        "between two grease-blackened fingers. He nods at you slowly, the way a\n"
+        "priest might nod at a tithe.\n\n"
+        "'Alright, specialist. You bought yourself some TIME. Ask me anything. Ask\n"
+        "me ANYTHING. I've been awake for fourteen frakkin' hours and I know where\n"
+        "the bodies are. Some of them metaphorical. Most of them not.'"
+    )
+
+
+def tyrol_on_talk(world, topic):
+    state = world.npc_state.setdefault("tyrol", {"gossip_index": 0})
+    bump_stat(world, "morale", 1)
+
+    if topic is None:
+        if world.flags.get("tyrol_owes_gossip"):
+            idx = state["gossip_index"]
+            state["gossip_index"] = idx + 1
+            return TYROL_DEEP_GOSSIP[idx % len(TYROL_DEEP_GOSSIP)]
+        return (
+            "Tyrol is leaning on a Viper's wing with the exact posture of a man who\n"
+            "has been awake since the second attack. He squints at you.\n\n"
+            "'Specialist. What. Make it quick. I have a deck. The deck has problems.\n"
+            "The problems have problems.'\n\n"
+            "(He looks tired. He looks really tired. He looks the kind of tired that\n"
+            "an algae bar might briefly redeem.)"
+        )
+
+    topic_lower = topic.lower()
+
+    if topic_lower in ("boomer", "sharon", "valerii"):
+        bump_stat(world, "cylon_vibes", 3)
+        return (
+            "Tyrol's face does something complicated. He tries to make it stop. It\n"
+            "won't stop.\n\n"
+            "'Boomer is a good pilot. Boomer is a great pilot. Boomer is — Boomer is\n"
+            "— Boomer is something I'm not gonna talk about with a SPECIALIST, frak's\n"
+            "sake. Move along.'\n\n"
+            "He absolutely loves her. You can hear it. He hates that you can hear it."
+        )
+
+    if topic_lower in ("helo", "agathon"):
+        return (
+            "'Helo. Yeah. He's back. He's — listen. I'm happy he's alive. I'm THRILLED\n"
+            "he's alive. I am ALSO going to be having some words with him about why\n"
+            "he keeps asking me where my — where BOOMER is. Some words. Maybe a fight.\n"
+            "Maybe a hug. We'll see how the day goes.'"
+        )
+
+    if topic_lower in ("tigh", "xo", "colonel"):
+        return (
+            "'The XO?' Tyrol exhales. 'Listen. I will not say anything against the XO\n"
+            "while in uniform. I will not say anything against the XO while sober.\n"
+            "I am, currently, both. So.' He shrugs. 'Some other time, specialist.'"
+        )
+
+    if topic_lower in ("dualla", "dee"):
+        return (
+            "'Dee? Good kid. Sharp. Too sharp for Apollo, frankly. Tell her I said hi.\n"
+            "Actually don't. She'll know I'm telling people things. She doesn't like\n"
+            "when I tell people things. Tell her nothing. Tell her I said nothing.'"
+        )
+
+    if topic_lower in ("gaeta", "felix"):
+        return (
+            "'Felix? Bridge officer. Knows everyone. Knows everyone's BUSINESS. Watch\n"
+            "what you say in front of him. Watch what you say BEHIND him too. He has\n"
+            "a list. Don't ask whose, you're on it.'"
+        )
+
+    if topic_lower in ("baltar", "doctor"):
+        return (
+            "'Don't get me started on him either, specialist. Last week he came down\n"
+            "here and asked, in front of seven people, if my Raptors had souls. I told\n"
+            "him my Raptors had a LOT of frakkin' things, and souls were the LEAST of\n"
+            "them, and could he please get off my deck. He winked. AT THE EMPTY AIR.\n"
+            "Then he left.'"
+        )
+
+    if topic_lower in ("self", "name"):
+        return (
+            "'Galen Tyrol. Deck chief. Twenty-two years in. I have not slept in nine\n"
+            "of them. Pleasure, specialist.'"
+        )
+
+    if topic_lower in ("ship", "galactica"):
+        return (
+            "'She's a tough old girl. Held together by spit, prayer, and three\n"
+            "specialists I trust including possibly you, if you're not the kind of\n"
+            "specialist who asks questions like this.'"
+        )
+
+    return (
+        "Tyrol blinks slowly. 'I don't know. I'm tired. Ask me later. Ask me with\n"
+        "snacks.'"
+    )
+
+
+register_npc(NPC(
+    id="tyrol",
+    name="Chief Tyrol",
+    aliases=["tyrol", "chief", "galen"],
+    description=(
+        "Chief Galen Tyrol. Hangar deck chief. Looks like a man who has been awake "
+        "since the gods made the rocks. Grease up to both elbows. A wrench in his "
+        "belt, a wrench in his back pocket, and a wrench-shaped bruise on his "
+        "forehead. He sees you. He has decided not to react to seeing you yet."
+    ),
+    on_talk=tyrol_on_talk,
+    on_give={"algae_bar": _tyrol_receive_algae},
+))
+
+
+# ─── Boomer ────────────────────────────────────────────────────────────────────
+
+BOOMER_DREAM_PROMPTS = [
+    ("water", "'Do you ever... dream about water? Just water. Going on forever. Going on so far it stops being water and starts being just BLUE.'"),
+    ("home", "'Do you ever dream about home? Not Caprica. Not Galactica. A third place. A place you've never been but you know the layout.'"),
+    ("the music", "'Do you ever wake up humming a song you don't know? Just four notes. Just four. Then they loop?'"),
+    ("being someone else", "'Have you ever — and answer honestly — have you ever woken up and not been sure, just for a second, that you were you?'"),
+]
+
+
+def _boomer_prompt(world) -> tuple[str, str]:
+    """Return (topic, prompt_text) for Boomer's current dream question."""
+    state = world.npc_state.setdefault("boomer", {"prompt_index": 0})
+    topic, text = BOOMER_DREAM_PROMPTS[state["prompt_index"] % len(BOOMER_DREAM_PROMPTS)]
+    state["prompt_index"] += 1
+    return topic, text
+
+
+def boomer_on_talk(world, topic):
+    bump_stat(world, "cylon_vibes", 2)  # she radiates the vibe
+
+    if topic is None:
+        _, prompt = _boomer_prompt(world)
+        return (
+            "Lieutenant Valerii — Boomer — turns to you. She has been staring at\n"
+            "the wall. The wall, on inspection, is unremarkable. She looks at you\n"
+            "with the specific intensity of a person who is checking whether you\n"
+            "are real.\n\n"
+            f"{prompt}\n\n"
+            "(She is waiting for an answer. The Raptor behind her is also, somehow,\n"
+            "waiting for an answer.)"
+        )
+
+    topic_lower = topic.lower()
+
+    # Honest answers to her dream questions — these spike CYLON_VIBES.
+    if topic_lower in ("water", "yes", "yes water", "ocean", "blue"):
+        bump_stat(world, "cylon_vibes", 18)
+        return (
+            "Her eyes go very still. Her face does nothing. Then everything. Then\n"
+            "nothing again.\n\n"
+            "'Oh,' she says. Very softly. 'Oh, specialist. We should probably not\n"
+            "talk about this here.'\n\n"
+            "She looks around. The Raptor is still listening. The wall is still\n"
+            "unremarkable. She does not move."
+        )
+
+    if topic_lower in ("home", "yes home", "third place"):
+        bump_stat(world, "cylon_vibes", 18)
+        return (
+            "'You too,' she whispers. 'You TOO. The layout — it's a corridor and\n"
+            "then it opens up and there are seven doors and the doors are all the\n"
+            "same — please tell me you've seen the seven doors.'\n\n"
+            "You did not say anything about seven doors. She is daring you to."
+        )
+
+    if topic_lower in ("the music", "music", "four notes", "song"):
+        bump_stat(world, "cylon_vibes", 22)
+        return (
+            "She closes her eyes. She hums the four notes. They are the four notes.\n"
+            "She knows they are. You know they are. The Raptor behind her is, in\n"
+            "your peripheral vision, very still."
+        )
+
+    if topic_lower in ("being someone else", "yes someone else", "not me", "someone else"):
+        bump_stat(world, "cylon_vibes", 25)
+        return (
+            "She takes your hand. Hers is warm. Hers is the right temperature for\n"
+            "a human hand. You notice that. You notice that you noticed that.\n\n"
+            "'It happens to me ALL the time, specialist. Every morning. Sometimes\n"
+            "while I'm flying. Sometimes' — she looks down at her own hand on yours\n"
+            "— 'while I'm awake.'\n\n"
+            "She lets go. The temperature of the hangar does not return to what it\n"
+            "was."
+        )
+
+    # Dismissive answers — no spike.
+    if topic_lower in ("no", "nope", "nothing", "i don't", "dreams", "not really"):
+        bump_stat(world, "morale", 1)
+        return (
+            "Her face closes. Like a door. Like a perfectly normal door, on a\n"
+            "perfectly normal ship.\n\n"
+            "'Right,' she says. 'Forget I asked, specialist. Forget I asked.' She\n"
+            "turns back to the Raptor. She does not look at you again."
+        )
+
+    if topic_lower in ("helo", "agathon"):
+        return (
+            "Her face does seven different things in three seconds. She catches\n"
+            "the seventh one. She holds it.\n\n"
+            "'Karl is — Karl is back. I know. I haven't gone to him yet. I should\n"
+            "go to him. I think — I think there's something I'm supposed to tell\n"
+            "him. I can't remember what.'"
+        )
+
+    if topic_lower in ("tyrol", "chief", "galen"):
+        return (
+            "Her face softens in a way that has nothing to do with Tyrol being on\n"
+            "the bridge, four decks, and one frakkin' war away. 'Galen is — Galen\n"
+            "is wonderful. Galen is good. I don't deserve Galen. I am, possibly,\n"
+            "going to ruin Galen's life. I hope not.'\n\n"
+            "She smiles. The smile does not reach her eyes. The eyes are doing\n"
+            "their own thing."
+        )
+
+    if topic_lower in ("cylon", "cylons", "toaster"):
+        bump_stat(world, "cylon_vibes", 10)
+        return (
+            "She laughs. The laugh is one note too short. 'A specialist asking a\n"
+            "pilot about toasters. What a frakkin' world.'\n\n"
+            "She does not answer your question. You did not, technically, ask one."
+        )
+
+    if topic_lower in ("self", "name"):
+        return (
+            "'Sharon Valerii. Callsign Boomer. Raptor jock. Twelve years sober.\n"
+            "Almost twelve.' She blinks. 'Sober from drinking. Sober from other\n"
+            "things, I don't know. Some of them I don't know I'm doing.'"
+        )
+
+    return (
+        "She doesn't answer. She is somewhere else for a second. Then she's back.\n"
+        "She does not seem to notice the gap."
+    )
+
+
+register_npc(NPC(
+    id="boomer",
+    name="Lieutenant Valerii",
+    aliases=["boomer", "sharon", "valerii", "lieutenant valerii"],
+    description=(
+        "Sharon 'Boomer' Valerii. Raptor pilot. Standing very still next to her "
+        "Raptor, looking at a wall. The wall is not doing anything. She has been "
+        "looking at it for the better part of an hour. When she notices you, her "
+        "face takes one extra beat before it remembers how to do the friendly thing."
+    ),
+    on_talk=boomer_on_talk,
+))
+
+
+# ─── Helo ──────────────────────────────────────────────────────────────────────
+
+HELO_DEFAULT_BEATS = [
+    # beat 1 — first encounter, mistakes player for Sharon
+    "He looks up. He sees you. His whole face does something his face does not, on\n"
+    "balance, have the structural integrity to do.\n\n"
+    f"'Oh GODS. It's been so long.' He stands up fast. He is taller than you remembered.\n"
+    "He's taller than you have ever remembered, because you have never met him. He\n"
+    "stops himself a foot short of you and stares.\n\n"
+    "'Wait. Wait. You're not — sorry. Sorry. You have her exact eyes. You have HER\n"
+    "EXACT EYES, specialist. I'm so sorry. Tell me everything. About yourself. Tell\n"
+    "me. Are you from Aerilon? You look like you're from Aerilon. SHE was from\n"
+    "Aerilon.'",
+    # beat 2
+    "He sees you. He LIGHTS up. Then he REMEMBERS. The lighting up and the remembering\n"
+    "happen so close together that they are functionally the same expression.\n\n"
+    "'Specialist. Specialist. Hi.' He is sitting on a sickbay bed. He has not been\n"
+    "discharged. He may never be discharged. 'Did you ever go back to Caprica? We — I —\n"
+    "Sharon and I — there was a CITY. There was a SHOWER. I can't talk about it. I'm\n"
+    "talking about it. I'm so sorry. You have her exact eyes.'",
+    # beat 3
+    "He stands up. He sits down. He stands up again. His jaw works. His eyes are doing\n"
+    "the soulful thing. The soulful thing is doing some heavy lifting.\n\n"
+    "'Listen. I know it's fast. I know I am, technically, not currently — listen.\n"
+    "Will you have dinner with me. Mess hall. Tonight. Just — bring whatever Sharon\n"
+    "you've got inside you. Bring all of it. I'll bring the rest.'",
+]
+
+
+HELO_COMPLICATED = (
+    "He sees you. He looks at you for a long time. His shoulders relax. Something\n"
+    "in him resolves.\n\n"
+    "'Specialist. I — I'm going to need some time. Some space. Some specialist of\n"
+    "a different shape, frankly. I'm sorry. You were — you are a kind person. You\n"
+    "are not the right person. I'm going to go find Boomer now. I should have done\n"
+    "that an hour ago.'"
+)
+
+
+def helo_on_talk(world, topic):
+    bump_stat(world, "morale", 2)  # he's earnest, it's nice
+
+    if topic is None:
+        return _romance_apply(world, "helo", HELO_DEFAULT_BEATS, HELO_COMPLICATED)
+
+    topic_lower = topic.lower()
+
+    if topic_lower in ("sharon", "boomer", "valerii"):
+        return (
+            "He folds. His face does the thing where it tries to be brave and the\n"
+            "trying is itself the heartbreak.\n\n"
+            "'Sharon was — Sharon IS — listen. There were two Sharons. Or one Sharon\n"
+            "twice. Or the same Sharon, but — I don't have the words. I haven't\n"
+            "had the words in eight months. I'm working on them.'"
+        )
+
+    if topic_lower in ("caprica", "city"):
+        return (
+            "'Caprica was — Caprica was a CITY. We hid. We ate. We made plans. We\n"
+            "made — listen. I am NOT going to make you sit through the entire\n"
+            "Caprica story, specialist. (Pause. He is going to make you sit through\n"
+            "the entire Caprica story.) Caprica was —'\n\n"
+            "(You decide, quietly, that you do not have time for the entire Caprica\n"
+            "story today. You make a polite face. He continues for another ten\n"
+            "minutes. You nod. You nod some more. You nod with your eyes.)"
+        )
+
+    if topic_lower in ("tyrol", "chief", "galen"):
+        return (
+            "His expression goes complicated and stays there. 'Tyrol is a good man.\n"
+            "Tyrol is a GOOD man. Tyrol is also — listen. Boomer and Tyrol have a\n"
+            "thing, allegedly, and I am NOT going to be the guy who shows up after\n"
+            "eight months and ruins it. I am also possibly going to be that guy. I\n"
+            "haven't decided.'"
+        )
+
+    if topic_lower in ("self", "name"):
+        return (
+            "'Karl Agathon. Callsign Helo. I've been on Caprica for eight months. I\n"
+            "have been back for one week. The week has been longer than the eight\n"
+            "months in some respects. Pleasure, specialist.'"
+        )
+
+    if topic_lower in ("cottle", "doc", "doctor"):
+        return (
+            "He laughs. 'Cottle is a frakkin' national treasure. He told me, on\n"
+            "intake, that I looked like hell. Which is fair. I do.'"
+        )
+
+    return (
+        "He looks at you with such complete sincerity that you, briefly, forget\n"
+        "what you were going to ask him. He waits, patient, while you remember.\n"
+        "You don't remember. He pats your shoulder. You go on with your day."
+    )
+
+
+register_npc(NPC(
+    id="helo",
+    name="Captain Agathon",
+    aliases=["helo", "karl", "agathon", "captain agathon"],
+    description=(
+        "Captain Karl 'Helo' Agathon. Just back from Caprica after a frankly "
+        "miraculous eight months. Sitting on a sickbay bed in his off-duty fatigues. "
+        "His eyes look like they've seen things and the things were mostly named "
+        "Sharon. He is the kind of earnest that is technically a load-bearing "
+        "personality trait."
+    ),
+    on_talk=helo_on_talk,
+))
+
+
+# ─── Lieutenant Gaeta ──────────────────────────────────────────────────────────
+
+
+def gaeta_on_talk(world, topic):
+    # Gaeta is the OFFICER who remembers your name. He breaks the contract.
+    state = world.npc_state.setdefault("gaeta", {"opinion_index": 0})
+    bump_stat(world, "morale", 2)
+
+    if topic is None:
+        name = world.player_name
+        return (
+            f"Lieutenant Gaeta looks up from his console. He looks at you. He says,\n"
+            f"without hesitation, your name.\n\n"
+            f"'Specialist {name}. Right? I keep a list. Don't ask why.'\n\n"
+            f"He smiles a small, weary, watching-the-Empire-fall smile. 'Welcome to\n"
+            f"CIC. You shouldn't be here. I'm choosing not to notice. What can I\n"
+            f"help you with.'"
+        )
+
+    topic_lower = topic.lower()
+
+    if topic_lower in ("list", "the list"):
+        return (
+            "'The list is everyone the XO has yelled at, threatened with the brig,\n"
+            "or paged on the intercom in the wrong tone of voice in the past month.\n"
+            "You are on the list. You are, in fact, ALPHABETIZED on the list. There\n"
+            f"is a sub-list for specialists. You are on the sub-list as \"{world.player_name},\n"
+            "Specialist, Toilet Drama Day,\" which I think is overspecific but I\n"
+            "didn't write that one.'"
+        )
+
+    if topic_lower in ("dualla", "dee"):
+        return (
+            "'Dee mentioned you. She had opinions.' He pauses. 'You should ask her.\n"
+            "I want to hear what she tells you. I have a bet running with myself.'"
+        )
+
+    if topic_lower in ("adama", "old man", "admiral"):
+        return (
+            "Gaeta exhales. 'The Old Man is the Old Man. He plays cards, he drinks,\n"
+            "he stares meaningfully, he wins. He is undefeated at meaningful staring\n"
+            "in this fleet. He is undefeated at HEAVYWEIGHT meaningful staring. Don't\n"
+            "challenge him.'"
+        )
+
+    if topic_lower in ("tigh", "xo", "colonel"):
+        return (
+            "Gaeta's face does a complicated wince. 'The XO is a tragedy with a flask\n"
+            "in it. I love him. I want him spaced. Both at once. I think he would\n"
+            "respect that.'"
+        )
+
+    if topic_lower in ("baltar", "doctor"):
+        bump_stat(world, "suspicion", 2)
+        return (
+            "'Don't even START with Baltar. He came up here last week and asked, very\n"
+            "calmly, if I \"felt watched.\" I am ALWAYS watched, Doctor. I am ON THE\n"
+            "BRIDGE. I am ON CAMERA. I am, currently, on FOUR cameras. Get OUT of\n"
+            "CIC.'"
+        )
+
+    if topic_lower in ("starbuck", "thrace", "kara"):
+        return (
+            "'Thrace is a thunderstorm with sidearms. I have a soft spot for her. I\n"
+            "would never tell her that. She would weaponize it inside an hour.'"
+        )
+
+    if topic_lower in ("apollo", "lee"):
+        return (
+            "'Apollo is — Apollo is a fine pilot. Apollo is a fine son. Apollo is\n"
+            "going to die holding hands with someone he hasn't told he loves them.\n"
+            "Probably Starbuck. Possibly Dee. Possibly both.'"
+        )
+
+    if topic_lower in ("jump", "ftl", "coordinates", "coords"):
+        world.flags["heard_adama_jump_prep"] = True
+        return (
+            "He glances at the plot. 'We're jumping. We don't know when. The XO has\n"
+            "the coordinates. The XO is in the head. I have inferences. I do not have\n"
+            "coordinates. If you, hypothetically, found coordinates on, hypothetically,\n"
+            "a frakkin' NAPKIN, I would, hypothetically, find that a normal Tuesday.'"
+        )
+
+    if topic_lower in ("self", "name"):
+        return (
+            "'Lieutenant Felix Gaeta. Bridge officer. I sit here. I press buttons. I\n"
+            "keep lists. I am, on balance, fine. I think.'"
+        )
+
+    if topic_lower in ("cylons", "cylon"):
+        return (
+            "Gaeta's voice drops. 'There are Cylons in this fleet. I am not going to\n"
+            "name names. I am going to say that I run the duty rosters and three of\n"
+            "them, last month, did not match the personnel manifests. I corrected the\n"
+            "discrepancy. I corrected it BOTH WAYS. I did not, technically, sleep that\n"
+            "night.'"
+        )
+
+    return (
+        "Gaeta tilts his head. 'I don't have an opinion on that one. Yet.' He\n"
+        "writes something on a sticky note and puts it on his console."
+    )
+
+
+register_npc(NPC(
+    id="gaeta",
+    name="Lieutenant Gaeta",
+    aliases=["gaeta", "felix", "lt gaeta", "lieutenant gaeta"],
+    description=(
+        "Lieutenant Felix Gaeta. CIC bridge officer. Standing at the secondary plot "
+        "with the specific posture of a man who has been the only competent person "
+        "in the room for several hours. He looks tired. He looks observant. He looks "
+        "like he is keeping notes. He is, in fact, keeping notes."
+    ),
+    on_talk=gaeta_on_talk,
+))
+
+
+# ─── Doc Cottle ────────────────────────────────────────────────────────────────
+
+COTTLE_PREFIX = "Cottle takes a long drag. He blows smoke at the ceiling fan, which has long since stopped trying. "
+
+
+def cottle_on_talk(world, topic):
+    bump_stat(world, "morale", 1)
+
+    if topic is None:
+        if not world.flags.get("cottle_offered_cigarette"):
+            world.flags["cottle_offered_cigarette"] = True
+            return (
+                COTTLE_PREFIX +
+                "He squints at you.\n\n"
+                "'You look like hell, kid. Not unusual for one of you specialists.\n"
+                "Notable, even on you.' He digs in a coat pocket. 'You want a cigarette?\n"
+                "I've got a frakkin' supply. Don't ask. Ask Cottle for a cigarette,\n"
+                "you get a cigarette. That's the rule. Ask Cottle for advice, you get\n"
+                "advice. Don't ask Cottle for advice. The advice is bad.'"
+            )
+        return (
+            COTTLE_PREFIX +
+            "'Still here, kid? Good. Means you're not dead. Means I'm not currently\n"
+            "yelling at someone over you. We call that a Tuesday.'"
+        )
+
+    topic_lower = topic.lower()
+
+    if topic_lower in ("cigarette", "cigarettes", "smoke"):
+        if "cigarette" not in world.inventory and not world.flags.get("got_cigarette"):
+            world.flags["got_cigarette"] = True
+            move_item_to_inventory(world, "cigarette")
+            return (
+                COTTLE_PREFIX +
+                "'Knock yourself out, kid.' He hands you a slightly-bent cigarette\n"
+                "and a book of matches with the Galactica seal on it. 'Don't light it\n"
+                "in here. Or do. I'm not your mother. Your mother smoked. Statistically\n"
+                "everybody's mother smoked.'"
+            )
+        return (
+            COTTLE_PREFIX +
+            "'Already gave you one, kid. Make it last.'"
+        )
+
+    if topic_lower in ("advice", "bad advice"):
+        return (
+            COTTLE_PREFIX +
+            "'Bad advice? Here's three.\n\n"
+            "  One: do not date pilots. Do not date pilots even if the pilot is hot.\n"
+            "    Especially if the pilot is hot.\n\n"
+            "  Two: if the XO offers you something to drink, the answer is no. I do\n"
+            "    not care what it is. I do not care if it is in a CANTEEN. The\n"
+            "    answer is no, kid.\n\n"
+            "  Three: nobody is okay. NOBODY. If somebody says they're okay, they\n"
+            "    are about to die or about to confess something. There is no third\n"
+            "    option.'"
+        )
+
+    if topic_lower in ("tigh", "xo", "colonel"):
+        return (
+            COTTLE_PREFIX +
+            "'Tigh? Listen, kid. If the XO ever asks you to fill a canteen, you say\n"
+            "no. You say frakkin' NO. You hear me? You will live longer. I won't\n"
+            "have to fish you out of a vent. I have done it before. I would prefer\n"
+            "not to do it again.'"
+        )
+
+    if topic_lower in ("roslin", "president"):
+        return (
+            COTTLE_PREFIX +
+            "His face softens. He doesn't allow it for long. 'She's a tough woman.\n"
+            "Tougher than the diagnosis. Tougher than the office. Don't ever tell\n"
+            "her I said that, kid. Don't even tell her I have feelings. The feelings\n"
+            "are a violation of regs.'"
+        )
+
+    if topic_lower in ("helo",):
+        return (
+            COTTLE_PREFIX +
+            "'Agathon? Stable. Underweight. Skin in three colors. Looks like a man\n"
+            "who has seen the gods and didn't like them. I'm keeping him here for\n"
+            "two more days. Three if I think Boomer will visit. Boomer won't visit.\n"
+            "She'll come to the door and stand outside and leave.'"
+        )
+
+    if topic_lower in ("boomer", "sharon"):
+        return (
+            COTTLE_PREFIX +
+            "His eyes narrow. 'Valerii is — Valerii is on my list. I run scans on\n"
+            "every pilot. Hers come back funny. They come back HUMAN, kid. But the\n"
+            "spreadsheet has a tone. I am tired of the spreadsheet's tone.'"
+        )
+
+    if topic_lower in ("self", "name", "cottle"):
+        return (
+            COTTLE_PREFIX +
+            "'Major Sherman Cottle. Chief medical officer. I smoke. I drink. I am,\n"
+            "as a result, the healthiest person on this frakkin' ship. Make your\n"
+            "peace with that, kid.'"
+        )
+
+    if topic_lower in ("napkin", "paper"):
+        return (
+            COTTLE_PREFIX +
+            "'A napkin? With NUMBERS? Kid, I am a doctor, not a frakkin' cryptographer.\n"
+            "Take it to the bridge. Take it to a math person. Don't take it to me. I\n"
+            "will set it on fire and use it to light my next cigarette.'"
+        )
+
+    return (
+        COTTLE_PREFIX +
+        "'I don't know, kid. Ask somebody who hasn't been awake since the second\n"
+        "attack. There aren't many. Try Gaeta. Gaeta knows everything. Gaeta is also\n"
+        "going to die of caffeine. Make your choices.'"
+    )
+
+
+register_npc(NPC(
+    id="cottle",
+    name="Doctor Cottle",
+    aliases=["cottle", "doc", "doctor cottle", "major cottle"],
+    description=(
+        "Doctor Sherman Cottle. Chief medical officer. Mid-cigarette. Scrubs blue. "
+        "Teeth not. The cigarette is, by your count, his third in twenty minutes. "
+        "The cigarette is wedged in the corner of his mouth in a way that suggests "
+        "the cigarette is structural. He looks at you with the specific patience of "
+        "a man who has heard every excuse and is not, in any way, in the market for "
+        "a new one."
+    ),
+    on_talk=cottle_on_talk,
+))
+
+
+# ─── Dualla ────────────────────────────────────────────────────────────────────
+
+DUALLA_DEFAULT = (
+    "Petty Officer Dualla looks up from her console. She looks at you. She looks at\n"
+    "you for a beat longer than is professional. Then she looks back at her console.\n\n"
+    "'Specialist.' Her voice is flat. Her voice is fond. The two facts coexist.\n"
+    "'I've heard your name. From Gaeta. He has a list. You're on it. Don't ask why.\n"
+    "I'm not the one to tell you. (I might be the one to tell you. I'll think about\n"
+    "it.)'"
+)
+
+DUALLA_BEATS = [
+    # beat 1 — about apollo
+    "She does not look up. 'Apollo's a lovely man. Apollo's a stupid man. The two\n"
+    "facts coexist. They are sometimes the same fact.' Now she looks up. 'I'm\n"
+    "settling, specialist. I want you to know that. I am SETTLING. There. I said\n"
+    "it. Out loud. To a SPECIALIST. The bridge is going to be insufferable about\n"
+    "this for weeks.'",
+    # beat 2 — hypothetically
+    "Her voice goes very even. 'If you HAD to choose between an officer who is\n"
+    "technically your job and an enlisted who is technically a person, who would\n"
+    "you choose. Hypothetically.' She does not look up. She does not blink. The\n"
+    "headset wire on her neck is, you note, very straight.\n\n"
+    "(She is waiting for a specific kind of answer. You are not entirely sure which\n"
+    "one. You give the one that feels right. It feels right because she nods.)",
+    # beat 3 — what's your shift like
+    "'Specialist. What's your shift like.' She is still not looking up. 'Hypothetically.\n"
+    "Like, what are your hours. Do you have time. Do you have, specifically, time.\n"
+    "Asking for a friend. The friend is me. I am asking for me.'\n\n"
+    "(Apollo enters CIC at the far end. He waves. He has no idea what is happening.\n"
+    "Dee does not wave back. The wave dies on the air between you.)",
+]
+
+DUALLA_COMPLICATED = (
+    "She looks up. She looks at you. She looks at Apollo, across CIC. She looks at\n"
+    "you again.\n\n"
+    "'I think I've made my decision about Apollo. And it is not — it is not, in\n"
+    "fact, you, specialist. I'm sorry. You seem nice. You'll be fine. I'll be fine.\n"
+    "Apollo will be — Apollo will be Apollo.' She puts her headset back on. The\n"
+    "conversation is over."
+)
+
+
+def dualla_on_talk(world, topic):
+    bump_stat(world, "morale", 1)
+
+    if topic is None:
+        return DUALLA_DEFAULT
+
+    topic_lower = topic.lower()
+
+    # Romance-bumping flirty topics
+    if topic_lower in ("apollo", "lee"):
+        return _romance_apply(world, "dualla", DUALLA_BEATS, DUALLA_COMPLICATED)
+    if topic_lower in ("self", "name", "you", "yourself"):
+        return _romance_apply(world, "dualla", DUALLA_BEATS, DUALLA_COMPLICATED)
+    if topic_lower in ("hypothetically", "shift", "time"):
+        return _romance_apply(world, "dualla", DUALLA_BEATS, DUALLA_COMPLICATED)
+
+    # Non-flirty judgment topics
+    if topic_lower in ("starbuck", "thrace", "kara"):
+        return (
+            "'Thrace is exhausting. Thrace is necessary. Thrace is somebody else's\n"
+            "problem. I have made my peace with the fact that Thrace is not, in any\n"
+            "meaningful sense, going to allow herself to be a problem I can solve.\n"
+            "Specialists may, of course, draw their own conclusions about what that\n"
+            "implies.' She is implying something specific. You catch about half of it."
+        )
+
+    if topic_lower in ("tigh", "xo", "colonel"):
+        return (
+            "'I will not comment on the XO. I have NOT been instructed to NOT\n"
+            "comment. I am choosing not to. There is a difference. I want you to\n"
+            "know there is a difference, specialist.'"
+        )
+
+    if topic_lower in ("adama", "admiral", "old man"):
+        return (
+            "'The Admiral is the Admiral. He is, in his way, exactly correct. In\n"
+            "another way, he is also Apollo's father, which is a different problem\n"
+            "for me, but a problem.'"
+        )
+
+    if topic_lower in ("gaeta", "felix"):
+        return (
+            "'Felix is — Felix is the only person on this bridge who I can have a\n"
+            "conversation with that doesn't make me want to short out the comms\n"
+            "panel. That is more love than you might assume.'"
+        )
+
+    if topic_lower in ("baltar", "doctor"):
+        return (
+            "Her face does nothing. Her face is doing the most by doing nothing.\n"
+            "'Doctor Baltar is, when he comes up here, asked very politely to leave.\n"
+            "Sometimes, on my off-shifts, I imagine asking him less politely. It is\n"
+            "a small joy. It is one of the small joys I am allowed.'"
+        )
+
+    if topic_lower in ("helo", "agathon"):
+        return (
+            "'Captain Agathon is back. We knew, two days before anyone told us, that\n"
+            "he was back. Comms knew. Comms knows everything. Comms is, in many ways,\n"
+            "the conscience of this ship. We do not have ENOUGH conscience for this\n"
+            "ship.'"
+        )
+
+    if topic_lower in ("boomer", "valerii"):
+        bump_stat(world, "cylon_vibes", 4)
+        return (
+            "Her voice drops. 'I run the comms for every Raptor in the air. Boomer's\n"
+            "Raptor sometimes — sometimes calls in coordinates that don't exist.\n"
+            "Sometimes I think she doesn't know she's done it. I have not, formally,\n"
+            "reported this. I am, informally, reporting it to a specialist. Make of\n"
+            "that what you will.'"
+        )
+
+    return (
+        "She does not answer. She is judging. The judging is, in its way, the answer."
+    )
+
+
+register_npc(NPC(
+    id="dualla",
+    name="Petty Officer Dualla",
+    aliases=["dualla", "dee", "petty officer dualla", "anastasia"],
+    description=(
+        "Petty Officer Anastasia Dualla. Communications. Standing at the comms console "
+        "with the specific posture of a person who has been judging absolutely "
+        "everybody for the last twelve hours and is not, currently, in the mood to "
+        "stop. She has her headset on one ear. The other ear is, you suspect, "
+        "monitoring everything within twenty meters."
+    ),
+    on_talk=dualla_on_talk,
 ))
