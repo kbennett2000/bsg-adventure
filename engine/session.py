@@ -67,6 +67,18 @@ class Session:
                 return None
             if raw is None:
                 break
+            # The Quorum Press Conference is a self-contained sub-mode. While
+            # it's active, ALL input is routed to its handler — the player has
+            # no normal verbs until the conference ends (or they quit).
+            if self.world.flags.get("press_active"):
+                from content import press
+                result = press.handle_input(self.world, raw)
+                if result.text:
+                    self.io.send(result.text)
+                if result.quit:
+                    self._autosave_quiet()
+                    return None
+                continue
             cmd = parser.parse(raw)
             result = commands.dispatch(self.world, cmd, self)
             if result.text:

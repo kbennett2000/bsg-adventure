@@ -348,6 +348,53 @@ register_item(Item(
 ))
 
 
+# ─── Presidential commendation letter (press conference reward) ──────────────
+
+
+def _commendation_on_examine(world):
+    return (
+        "A folded sheet of presidential letterhead. The handwriting is President\n"
+        "Roslin's. Your name is on it. Your name is, you note, misspelled. By two\n"
+        "letters. In a way that suggests she heard the name approximately and\n"
+        "almost used the wrong one in time.\n\n"
+        "The letter commends you for 'extraordinary composure under press scrutiny'\n"
+        "and 'a number of remarks of substantial historical interest.' It is\n"
+        "signed L.R., and the signature is, you note, slightly damp."
+    )
+
+
+def _commendation_on_use(world):
+    if world.flags.get("commendation_used"):
+        return "Already used. The letter is creased now. The crease was you."
+    world.flags["commendation_used"] = True
+    bump_stat(world, "morale", 5)
+    bump_stat(world, "suspicion", -10)
+    return (
+        "You produce the letter at the next checkpoint. The MP reads it. The MP\n"
+        "reads it again. The MP looks at you. The MP looks at the misspelled name.\n"
+        "The MP shrugs and waves you through.\n\n"
+        "It works. It actually works."
+    )
+
+
+register_item(Item(
+    id="commendation_letter",
+    name="presidential commendation letter",
+    aliases=["commendation", "letter", "presidential letter", "press pass"],
+    description="<dynamic>",
+    takeable=True,
+    on_use=_commendation_on_use,
+))
+
+
+def _attach_commendation_dynamic():
+    from engine.registry import ITEMS as _ITEMS
+    _ITEMS["commendation_letter"]._dynamic_description = _commendation_on_examine  # type: ignore[attr-defined]
+
+
+_attach_commendation_dynamic()
+
+
 # ─── Tigh's flask (stash quest bottle #1) ──────────────────────────────────────
 
 def _stash_swig(world):

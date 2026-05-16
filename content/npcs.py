@@ -500,6 +500,22 @@ def hadrian_on_talk(world, topic):
             "go home a wiser man. Or, in your case, a SOMEWHAT wiser man.'"
         )
 
+    if topic in ("famous", "tv", "press", "interview", "press conference"):
+        if world.flags.get("was_briefly_famous"):
+            return (
+                "He stares at you. 'Listen. I'm gonna say it once.' He sets down\n"
+                "the cards. 'I saw you on the broadcast. EVERYONE saw you on the\n"
+                "broadcast. There is a quote on a T-SHIRT. The T-SHIRT is in the\n"
+                "MESS. THREE SPECIALISTS ARE WEARING IT. Some senior officer is\n"
+                "going to want a word with you and it is NOT going to be a nice\n"
+                "word, you understand me?'"
+            )
+        return (
+            "'Specialists shouldn't do press, man. We're meant to MOP. The day a\n"
+            "specialist shows up on a broadcast is the day a specialist shows up\n"
+            "on an airlock manifest. Just sayin'.'"
+        )
+
     if topic in ("schedule", "watches", "watch", "shifts", "the day"):
         return (
             "'Five watches. Morning Watch, Forenoon, Afternoon, Dog Watch, Night.\n"
@@ -1412,6 +1428,25 @@ def roslin_on_talk(world, topic):
         )
 
     topic_lower = topic.lower()
+
+    if topic_lower in ("press", "conference", "quorum", "reporters",
+                        "press conference", "the press"):
+        # Triggers the Quorum Press Conference minigame.
+        # Roslin's briefing handles the in-character framing; the press module
+        # owns all the question/answer logic + outcomes.
+        if world.flags.get("press_active"):
+            return (
+                "She frowns. 'Specialist. You are LITERALLY in the middle of one.\n"
+                "FOCUS.'"
+            )
+        if world.flags.get("press_outcome"):
+            # They already did one.
+            return (
+                "She sips her water. 'We are not doing that again, specialist.\n"
+                "Not after last time. Not, frankly, ever.'"
+            )
+        from content.press import start_press_conference
+        return start_press_conference(world)
 
     if topic_lower in ("prophecy", "pythia", "scriptures", "religion", "faith"):
         # Opens the prophecy mini-quest by surfacing her vision.
