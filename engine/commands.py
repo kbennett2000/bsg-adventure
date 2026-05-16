@@ -337,6 +337,8 @@ def cmd_give(world, command, session) -> HandlerResult:
 
 
 def cmd_wait(world, command, session) -> HandlerResult:
+    # Laying low: a small suspicion-reducer. Cap at 0 via bump_stat clamping.
+    bump_stat(world, "suspicion", -1)
     return HandlerResult(text="You stand there. Time advances. The ship hums. Somewhere, an officer sighs meaningfully.")
 
 
@@ -362,7 +364,13 @@ def cmd_load(world, command, session) -> HandlerResult:
     except Exception as exc:
         return HandlerResult(text=f"Load failed: {exc}", advance_turn=False)
     # Mutate the current world in place so session retains the same reference
-    for attr in ("player_name", "current_room", "inventory", "room_items", "flags", "turn", "npc_state"):
+    # Copy every WorldState field from the loaded snapshot. Note: any new
+    # field added to WorldState MUST be listed here or it will silently fail
+    # to restore on load.
+    for attr in (
+        "player_name", "current_room", "inventory", "room_items",
+        "flags", "turn", "npc_state", "visited_rooms", "stats",
+    ):
         setattr(world, attr, getattr(loaded, attr))
     return HandlerResult(text=f"Loaded slot '{slot}'.\n\n" + describe_room(world), advance_turn=False)
 
@@ -384,6 +392,7 @@ def cmd_help(world, command, session) -> HandlerResult:
         "  wait                       — let a turn pass\n"
         "  save [slot] / load [slot]  — save your game / load it back\n"
         "  status                     — how you're feeling, what your uniform's doing\n"
+        "  hint                       — Adama, in your head, says something cryptic but useful\n"
         "  salute                     — render proper respect (or don't)\n"
         "  frak                       — express yourself. Burns a turn.\n"
         "  quit                       — leave the ship\n"
@@ -472,6 +481,83 @@ def cmd_status(world, command, session) -> HandlerResult:
     return HandlerResult(text=text, advance_turn=False)
 
 
+# ─── hint — Adama-style cryptic guidance based on quest flags ─────────────────
+
+def _hint_line(world) -> str:
+    """Compute a cryptic-but-useful nudge based on current quest state. The
+    point: a confused player can always advance the game. Adama-flavored:
+    sounds profound, is actually a specific instruction if you decode it."""
+    f = world.flags
+    inv = world.inventory
+
+    if f.get("__ended__"):
+        return (
+            "Some shifts end. The shift ended. You can begin again, or you can\n"
+            "leave. Either is a kind of beginning."
+        )
+
+    # Has the player even started the main quest?
+    if not f.get("got_canteen"):
+        return (
+            "Adama, in your head, says: 'A man cannot mop forever, son. Sometimes\n"
+            "a man must walk EAST. To a room with a closed door. To a man with a\n"
+            "thirst.' He is, somehow, correct."
+        )
+
+    # Got canteen; have they found the napkin yet?
+    if "napkin" not in inv and "napkin" not in world.room_items.get("head_deck_5", []):
+        return (
+            "Adama, in your head, says: 'A man finds a napkin where a man drops a\n"
+            "napkin. Floors are not, son, just floors. They are testimony.'\n"
+            "(Try the floor. Or the tile. Or the stall. You'll know it when you\n"
+            "see it.)"
+        )
+
+    # Napkin in room but not picked up yet
+    if "napkin" in world.room_items.get("head_deck_5", []):
+        return (
+            "Adama, in your head, says: 'A specialist who SEES is half a specialist.\n"
+            "A specialist who TAKES is a frakkin' man.' Take the thing, son."
+        )
+
+    # Player has napkin, hasn't realized
+    if "napkin" in inv and not f.get("realized_napkin_is_coords"):
+        return (
+            "Adama, in your head, says: 'Numbers are mirrors, son. You see in them\n"
+            "what you have lived. You have not, yet, lived a jump. Listen to those\n"
+            "who have.'\n"
+            "(Find someone who can tell you what these numbers ARE. The mess hall\n"
+            "specialists. The bridge. Roslin, in sickbay.)"
+        )
+
+    # Realized but hasn't reached CIC
+    if f.get("realized_napkin_is_coords") and world.current_room != "cic":
+        return (
+            "Adama, in your head, says: 'The paper goes to the man at the plot.\n"
+            "The man at the plot is, son, north. North of north. Through the\n"
+            "carpet.'\n"
+            "(Get to CIC. Up from corridor B-7, then north from corridor A.)"
+        )
+
+    # In CIC with napkin
+    if world.current_room == "cic" and "napkin" in inv:
+        return (
+            "Adama, in your head, says: 'Give a man what is HIS, son. Not a word.\n"
+            "Not a salute. The THING. The thing in your hand.'\n"
+            "(Try: give napkin to adama.)"
+        )
+
+    return (
+        "Adama, in your head, says: 'The frakkin' tide of duty is constant, son.\n"
+        "When in doubt, do something. When that fails, do something ELSE.'\n"
+        "(Wander a corridor. Talk to a specialist. Examine a thing. Mop a deck.)"
+    )
+
+
+def cmd_hint(world, command, session) -> HandlerResult:
+    return HandlerResult(text=_hint_line(world), advance_turn=False)
+
+
 # ─── flavor verbs ──────────────────────────────────────────────────────────────
 
 SALUTE_REPLIES = [
@@ -521,7 +607,7 @@ def cmd_frak(world, command, session) -> HandlerResult:
     # Deterministic rotation so the player sees variety rather than repeats.
     idx = world.flags.get("__frak_index__", 0)
     world.flags["__frak_index__"] = idx + 1
-    bump_stat(world, "morale", 2)  # catharsis
+    bump_stat(world, "morale", 1)  # catharsis (small — each frak also costs a turn)
     return HandlerResult(text=FRAK_LAMENTS[idx % len(FRAK_LAMENTS)])
 
 
@@ -569,6 +655,7 @@ HANDLERS: dict[str, Callable] = {
     "drink": cmd_drink,
     "eat": cmd_eat,
     "status": cmd_status,
+    "hint": cmd_hint,
 }
 
 

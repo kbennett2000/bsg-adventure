@@ -29,6 +29,7 @@ VERB_SYNONYMS = {
     "save": "save",
     "load": "load", "restore": "load",
     "help": "help", "?": "help",
+    "hint": "hint", "hints": "hint", "stuck": "hint", "advice": "hint",
     "quit": "quit", "exit": "quit", "q": "quit",
     "salute": "salute",
     "status": "status", "stat": "status", "stats": "status", "vibe": "status", "vibes": "status",

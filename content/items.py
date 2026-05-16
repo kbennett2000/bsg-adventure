@@ -45,6 +45,7 @@ register_item(Item(
 def mop_on_use(world):
     bump_stat(world, "morale", -3)         # actual work tanks morale
     bump_stat(world, "exhaustion", 4)       # and it's tiring
+    bump_stat(world, "suspicion", -1)       # but you look like you're doing your job
     return (
         "You give the deck a professional once-over. It looks marginally less haunted. "
         "Somewhere, an officer feels vaguely better about themselves and does not know why."
@@ -182,7 +183,9 @@ def canteen_on_use(world):
 register_item(Item(
     id="canteen",
     name="battered canteen",
-    aliases=["canteen", "flask", "bottle"],
+    aliases=["canteen"],   # NB: "flask" used to be aliased here but now collides
+                            # with the actual flask item (stash quest bottle #1).
+                            # "bottle" is too generic and shared with stash bottles.
     description=(
         "A dented metal canteen, military issue, with the XO's name scratched off and "
         "replaced with 'WATER ONLY' in three different sets of handwriting. It is empty. "

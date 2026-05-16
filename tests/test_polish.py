@@ -64,7 +64,7 @@ def test_spaced_ending_appends_an_epitaph():
         world = new_world("Doomed", "env_control")
         world.visited_rooms.append("env_control")
         set_stat(world, "suspicion", 100)
-        io = ScriptedIO(["wait", "quit"])
+        io = ScriptedIO(["salute", "quit"])
         Session(io=io, world=world).run()
         # The ending text + an epitaph + the END marker should all appear.
         t = io.transcript
@@ -90,7 +90,7 @@ def test_so_say_we_all_unlocks_at_50_fraks():
         world.visited_rooms.append("env_control")
         world.flags["__frak_index__"] = 50  # already hit 50
         set_stat(world, "suspicion", 100)  # force spaced
-        io = ScriptedIO(["wait", "quit"])
+        io = ScriptedIO(["salute", "quit"])
         Session(io=io, world=world).run()
         assert "So Say We All" in io.transcript
 
@@ -120,7 +120,7 @@ def test_lahey_coded_unlocks_after_five_drinks():
         # Drink 5 times then trigger an ending
         world.flags["tigh_drink_count"] = 5
         set_stat(world, "suspicion", 100)
-        io = ScriptedIO(["wait", "quit"])
+        io = ScriptedIO(["salute", "quit"])
         Session(io=io, world=world).run()
         assert "Lahey-coded" in io.transcript
 
@@ -132,7 +132,7 @@ def test_achievements_persist_to_disk():
         world.visited_rooms.append("env_control")
         world.flags["__frak_index__"] = 50
         set_stat(world, "suspicion", 100)
-        io = ScriptedIO(["wait", "quit"])
+        io = ScriptedIO(["salute", "quit"])
         Session(io=io, world=world).run()
         # File should be written
         from pathlib import Path
@@ -167,7 +167,7 @@ def test_session_returns_ng_plus_dict_when_player_answers_yes():
         world.visited_rooms.append("env_control")
         set_stat(world, "suspicion", 100)  # force spaced
         # After ending: prompt is shown, we answer "y"
-        io = ScriptedIO(["wait", "y"])
+        io = ScriptedIO(["salute", "y"])
         next_action = Session(io=io, world=world).run()
         assert next_action is not None
         assert next_action["ng_plus"] is True
@@ -181,7 +181,7 @@ def test_session_returns_none_when_player_declines_ng_plus():
         world = new_world("OneAndDone", "env_control")
         world.visited_rooms.append("env_control")
         set_stat(world, "suspicion", 100)
-        io = ScriptedIO(["wait", "n"])
+        io = ScriptedIO(["salute", "n"])
         next_action = Session(io=io, world=world).run()
         assert next_action is None
 
@@ -193,7 +193,7 @@ def test_ng_plus_count_increments_across_runs():
         world.visited_rooms.append("env_control")
         world.flags["ng_plus_count"] = 3  # this is the 4th run
         set_stat(world, "suspicion", 100)
-        io = ScriptedIO(["wait", "y"])
+        io = ScriptedIO(["salute", "y"])
         next_action = Session(io=io, world=world).run()
         assert next_action["ng_plus_count"] == 4
 
@@ -254,7 +254,7 @@ def test_all_of_this_has_happened_before_achievement():
         world.visited_rooms.append("env_control")
         world.flags["ng_plus"] = True
         set_stat(world, "suspicion", 100)
-        io = ScriptedIO(["wait", "n"])
+        io = ScriptedIO(["salute", "n"])
         Session(io=io, world=world).run()
         assert "All of This Has Happened Before" in io.transcript
 

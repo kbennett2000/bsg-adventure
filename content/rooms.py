@@ -115,19 +115,23 @@ def corridor_c12_on_enter(world):
     candidates = [enc for enc in CORRIDOR_C12_ENCOUNTERS if enc[0] != last]
     key, text = choice(candidates)
     state["last_encounter"] = key
-    # Stat consequences for each encounter
-    if key == "tigh_staggers":
-        bump_stat(world, "suspicion", 4)
-    elif key == "starbuck_punches":
-        bump_stat(world, "morale", 2)
-    elif key == "six_walks":
-        world.flags["saw_a_six"] = True
-        bump_stat(world, "cylon_vibes", 5)
-    elif key == "baltar_argues":
-        bump_stat(world, "suspicion", 3)
-        bump_stat(world, "morale", -1)
-    elif key == "apollo_mopes":
-        bump_stat(world, "morale", 1)
+    # Stat consequences fire only the FIRST time each encounter type is witnessed.
+    # The encounter itself still fires for narrative; the bump is the one-shot.
+    seen_key = f"c12_encounter_seen_{key}"
+    if not world.flags.get(seen_key):
+        world.flags[seen_key] = True
+        if key == "tigh_staggers":
+            bump_stat(world, "suspicion", 4)
+        elif key == "starbuck_punches":
+            bump_stat(world, "morale", 2)
+        elif key == "six_walks":
+            world.flags["saw_a_six"] = True
+            bump_stat(world, "cylon_vibes", 5)
+        elif key == "baltar_argues":
+            bump_stat(world, "suspicion", 3)
+            bump_stat(world, "morale", -1)
+        elif key == "apollo_mopes":
+            bump_stat(world, "morale", 1)
     return text
 
 
@@ -416,14 +420,18 @@ def corridor_b_on_enter(world):
     candidates = [enc for enc in CORRIDOR_B_ENCOUNTERS if enc[0] != last]
     key, text = choice(candidates)
     state["last_encounter"] = key
-    if key == "six_supervisor":
-        bump_stat(world, "cylon_vibes", 8)
-    elif key == "six_distant":
-        bump_stat(world, "cylon_vibes", 3)
-    elif key == "tigh_catwalk":
-        bump_stat(world, "suspicion", 5)
-    elif key == "pilots_yelling":
-        bump_stat(world, "morale", 1)
+    # One-shot per encounter type — see corridor_c12_on_enter for rationale.
+    seen_key = f"b7_encounter_seen_{key}"
+    if not world.flags.get(seen_key):
+        world.flags[seen_key] = True
+        if key == "six_supervisor":
+            bump_stat(world, "cylon_vibes", 8)
+        elif key == "six_distant":
+            bump_stat(world, "cylon_vibes", 3)
+        elif key == "tigh_catwalk":
+            bump_stat(world, "suspicion", 5)
+        elif key == "pilots_yelling":
+            bump_stat(world, "morale", 1)
     return text
 
 
@@ -540,8 +548,6 @@ register_room(Room(
 
 def baltars_lab_on_enter(world):
     if world.flags.get("entered_baltars_lab"):
-        # Re-entry still drains morale (Baltar is exhausting to be near)
-        bump_stat(world, "morale", -1)
         return None
     world.flags["entered_baltars_lab"] = True
     witness_once(world, "witnessed_baltar_solo_argument", "suspicion", 5)
@@ -946,7 +952,6 @@ register_room(Room(
 
 def brig_on_enter(world):
     if world.flags.get("entered_brig"):
-        bump_stat(world, "cylon_vibes", 2)
         return None
     world.flags["entered_brig"] = True
     bump_stat(world, "cylon_vibes", 8)
@@ -1282,13 +1287,13 @@ register_room(Room(
 
 
 def storage_bay_on_enter(world):
-    bump_stat(world, "cylon_vibes", 10)
     if world.flags.get("entered_storage_bay"):
         return (
             "You're back. The hum is the same. The four notes loop. You feel briefly,\n"
             "embarrassingly, at home."
         )
     world.flags["entered_storage_bay"] = True
+    bump_stat(world, "cylon_vibes", 10)
     return (
         "The ladder is short. The space at the bottom is, somehow, much larger than\n"
         "it has any right to be — like the ship grew around something nobody put\n"

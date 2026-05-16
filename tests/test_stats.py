@@ -167,8 +167,9 @@ def test_drinking_canteen_after_filled_raises_suspicion_and_morale():
 
 def test_frak_boosts_morale():
     with tempfile.TemporaryDirectory() as tmp:
-        io, world = _run(["frak", "frak", "frak", "quit"], save_dir=tmp)
-        assert get_stat(world, "morale") >= 50 + 5  # three frak's, ~+6
+        # Frak is +1 morale per call after the balance pass.
+        io, world = _run(["frak", "frak", "frak", "frak", "frak", "quit"], save_dir=tmp)
+        assert get_stat(world, "morale") >= 50 + 4  # five fraks, ~+5
 
 
 def test_talking_to_hadrian_boosts_morale():
@@ -227,13 +228,10 @@ def test_suspicion_100_anywhere_triggers_spaced():
     with tempfile.TemporaryDirectory() as tmp:
         os.environ["BSG_SAVE_DIR"] = tmp
         world = new_world("Doomed", "env_control")
-        set_stat(world, "suspicion", 99)
-        # Any action that advances a turn will tip us over after the global check.
-        # Use `wait` — it advances a turn but doesn't trigger NPC dialogue.
-        # We need the witness in The Head to push it over; easier to just preset
-        # to 100 and confirm the loop fires on next turn.
         set_stat(world, "suspicion", 100)
-        io = ScriptedIO(["wait", "quit"])
+        # Use `salute` to advance a turn — it doesn't touch suspicion. (`wait`
+        # was retuned to reduce suspicion, so it would clear the trigger.)
+        io = ScriptedIO(["salute", "quit"])
         Session(io=io, world=world).run()
         assert world.flags.get("__ended__") == "spaced", (
             f"expected spaced via global suspicion; got {world.flags.get('__ended__')!r}"

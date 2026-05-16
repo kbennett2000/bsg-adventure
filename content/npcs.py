@@ -1329,7 +1329,7 @@ register_npc(NPC(
 
 def roslin_on_talk(world, topic):
     world.flags["heard_roslin_prophecy"] = True
-    bump_stat(world, "suspicion", 3)   # being seen with the President draws attention
+    bump_stat(world, "suspicion", 1)   # being seen with the President draws attention (small, doesn't compound brutally)
     bump_stat(world, "morale", 1)       # she's nice enough
 
     if topic is None:
@@ -1655,7 +1655,7 @@ def _tyrol_receive_wrench(world):
         world.inventory.remove("wrench")
     world.flags["quest_wrench_complete"] = True
     bump_stat(world, "morale", 8)
-    bump_stat(world, "suspicion", -5)  # the chief is a powerful ally
+    bump_stat(world, "suspicion", -10)  # the chief is a powerful ally
     return (
         "Tyrol takes the wrench between both grease-blackened hands like it's the\n"
         "first child he ever held. His face does something his face does not, on\n"
