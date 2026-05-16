@@ -301,6 +301,272 @@ register_item(Item(
 ))
 
 
+# ─── Tigh's flask (stash quest bottle #1) ──────────────────────────────────────
+
+def _stash_swig(world):
+    """Shared swig handler for any of the three stash bottles. The reward swig:
+    +morale, +exhaustion, marginally suspicious."""
+    bump_stat(world, "morale", 6)
+    bump_stat(world, "exhaustion", 6)
+    bump_stat(world, "suspicion", 2)
+    return (
+        "You unscrew the cap. It hisses. You take a sip. It is — gods. It is.\n\n"
+        "Your eyes water. Your throat learns something new about itself. The\n"
+        "world becomes briefly, vividly, exactly the size of your own face. You\n"
+        "are awake in a different way than before. You are also tired in a\n"
+        "different way than before. Both are improvements. Maybe."
+    )
+
+
+register_item(Item(
+    id="flask",
+    name="Tigh's hip flask",
+    aliases=["flask", "hip flask", "bottle"],
+    description=(
+        "A battered hip flask, monogrammed S.T. The S is more battered than the T. "
+        "Heavier than it ought to be. Smells like a fire that learned how to feel."
+    ),
+    takeable=True,
+    on_drink=_stash_swig,
+))
+
+
+# ─── Stash bottle #2 (mess hall) ──────────────────────────────────────────────
+
+register_item(Item(
+    id="stash_bottle_mess",
+    name="suspicious thermos",
+    aliases=["thermos", "stash thermos", "bottle"],
+    description=(
+        "A regulation-issue thermos with COFFEE — DO NOT DRINK — TIGH written on "
+        "it in three different markers and one (1) clear act of forgery. It is "
+        "not coffee. The thermos has been very specifically labelled to be unappealing."
+    ),
+    takeable=True,
+    on_drink=_stash_swig,
+))
+
+
+# ─── Stash bottle #3 (hangar deck) ────────────────────────────────────────────
+
+register_item(Item(
+    id="stash_bottle_hangar",
+    name="grease-can bottle",
+    aliases=["grease can", "grease bottle", "can", "bottle"],
+    description=(
+        "An empty deck-issue grease can with a screwtop. The grease can is\n"
+        "deeply unconvincing, mostly because it is full of liquid that sloshes\n"
+        "wrong. It also smells like a fire that learned how to feel."
+    ),
+    takeable=True,
+    on_drink=_stash_swig,
+))
+
+
+# ─── Photo of Adama and Tigh from the academy ─────────────────────────────────
+
+def photo_on_examine(world):
+    if not world.flags.get("examined_academy_photo"):
+        world.flags["examined_academy_photo"] = True
+        bump_stat(world, "suspicion", 20)
+        return (
+            "A black-and-white photo. The Adama Academy, decades ago. Two young\n"
+            "officers in dress uniform. One is recognizably Bill Adama, hair black,\n"
+            "smile unfamiliar. The other is recognizably Saul Tigh, both eyes\n"
+            "intact, much thinner, holding Bill's hand below the frame in a way\n"
+            "that the photographer almost certainly did not stage and absolutely\n"
+            "definitely captured.\n\n"
+            "On the back, in tight pencil handwriting: 'Saul + Bill — Picon, last\n"
+            "shore leave before the assignment. Don't lose this.'\n\n"
+            "You stare at it. You stare at it some more. You will be unable, for the\n"
+            "rest of your life, to un-see it. You will be unable, for the rest of\n"
+            "your shorter life, to forget that you saw it."
+        )
+    return (
+        "The same photograph. The same hands. The same below-frame thing. The same\n"
+        "implication. The same career-ending implication. You put it back. You always\n"
+        "put it back."
+    )
+
+
+register_item(Item(
+    id="photo_academy",
+    name="academy photograph",
+    aliases=["photo", "photograph", "picture"],
+    description="<dynamic>",
+    takeable=True,
+))
+
+
+# ─── Cylon detector prototype ────────────────────────────────────────────────
+
+def cylon_detector_on_use(world):
+    """Beeps at a random NPC in the room, or occasionally at the player."""
+    import random
+    from engine.registry import NPCS, ROOMS
+    room = ROOMS[world.current_room]
+    candidates = []
+    for npc_id in room.npcs:
+        candidates.append(("npc", npc_id))
+    # ~30% chance the detector points at the player
+    candidates.append(("player", None))
+    candidates.append(("player", None))
+    if not candidates:
+        return "The detector hums. Then it beeps once, sadly, at a fire extinguisher."
+    choice = random.choice(candidates)
+    if choice[0] == "player":
+        bump_stat(world, "cylon_vibes", 10)
+        bump_stat(world, "morale", -5)
+        return (
+            "The detector hums. Then it beeps. Loud. Insistent. Pointed.\n\n"
+            "At you.\n\n"
+            "It is pointing at YOU, specialist. The needle is hard over. It is\n"
+            "humming a chord. You hold the detector at arm's length. The detector\n"
+            "follows you, somehow. Baltar made this thing. Baltar made this thing\n"
+            "and it works exactly the wrong amount."
+        )
+    npc = NPCS[choice[1]]
+    return (
+        f"The detector hums. Then it beeps, very deliberately, at {npc.name}.\n"
+        f"{npc.name} does not react. {npc.name} may not have noticed. {npc.name}\n"
+        f"may have noticed and decided that reacting was, on balance, a worse outcome\n"
+        f"than not reacting. You will not know. You will never know."
+    )
+
+
+register_item(Item(
+    id="cylon_detector",
+    name="Cylon-detector prototype",
+    aliases=["detector", "cylon detector", "prototype", "device"],
+    description=(
+        "A box with a needle and a hum and three blinking lights. It has Baltar's "
+        "handwriting on the side, which is in itself a warning. The device is, "
+        "according to its inventor, the only Cylon-detection technology in the "
+        "fleet. According to absolutely everyone else, it beeps at fire "
+        "extinguishers and cats."
+    ),
+    takeable=True,
+    on_use=cylon_detector_on_use,
+))
+
+
+# ─── Triad cards ─────────────────────────────────────────────────────────────
+
+register_item(Item(
+    id="triad_cards",
+    name="deck of triad cards",
+    aliases=["cards", "deck", "triad cards", "triad"],
+    description=(
+        "A well-loved deck of triad cards. The corners are folded in ways that, in\n"
+        "Starbuck's hands, would not be considered cheating. In yours, would. The\n"
+        "back of every card has a slightly different scuff. You have read about\n"
+        "this. You have read about this in a book Starbuck almost certainly wrote."
+    ),
+    takeable=True,
+))
+
+
+# ─── Sealed envelope (CIC — opening it is an ending) ────────────────────────
+
+def sealed_envelope_on_use(world):
+    from engine.commands import trigger_ending
+    return trigger_ending(
+        world,
+        "forbidden_knowledge",
+        "You break the seal. You hold the envelope by both corners like you're\n"
+        "defusing a bomb. You unfold the single sheet of paper inside.\n\n"
+        "It is in Adama's handwriting. Clean, deliberate, slightly slanted from\n"
+        "years of writing at sea. It says:\n\n"
+        "    Saul —\n"
+        "    Tuesday. 1900. Same place. Bring the good bottle. Bring yourself.\n"
+        "    — Bill.\n\n"
+        "Underneath, in different ink: 'Don't be late. (You're always late.)'\n\n"
+        "You stare at it. You absorb the implications. You will live with them.\n"
+        "For approximately the next thirty seconds.\n\n"
+        "Tigh's hand lands on your shoulder. You did not hear him approach. He\n"
+        "smells like a fire that learned how to feel. His voice is very gentle\n"
+        "and very sad.\n\n"
+        "'Specialist. We are going to take a short walk to the airlock.'\n\n"
+        "── ENDING: FORBIDDEN KNOWLEDGE (YOU READ THE FRAKKIN' LETTER) ──"
+    )
+
+
+def sealed_envelope_on_examine(world):
+    if world.flags.get("opened_envelope"):
+        return "Already opened. Already read. Already, very, very specifically not your business."
+    return (
+        "A standard officer-grade manila envelope. Sealed with red wax bearing the\n"
+        "Galactica crest. Three words on the front, in red marker:\n\n"
+        "    DO NOT OPEN.\n\n"
+        "There is no addressee. There is no return address. There is only the\n"
+        "wax, and the words, and you, and a decision to make."
+    )
+
+
+register_item(Item(
+    id="sealed_envelope",
+    name="sealed envelope",
+    aliases=["envelope", "letter", "sealed envelope"],
+    description="<dynamic>",
+    takeable=True,
+    on_use=sealed_envelope_on_use,
+))
+
+
+# ─── Worn copy of the Sacred Scrolls ─────────────────────────────────────────
+
+register_item(Item(
+    id="scrolls",
+    name="worn copy of the Sacred Scrolls",
+    aliases=["scrolls", "sacred scrolls", "book", "scripture", "scriptures", "pythia"],
+    description=(
+        "A worn-out copy of the Sacred Scrolls of Pythia. Cottle's name is in the\n"
+        "front cover, crossed out. Roslin's name is below it, also crossed out, in\n"
+        "Roslin's handwriting. Hadrian's name is below THAT, not crossed out,\n"
+        "though Hadrian has no recollection of having owned a copy of the Sacred\n"
+        "Scrolls and will say so if asked.\n\n"
+        "The margins are filled with annotations. Every prophecy concerning a\n"
+        "'dying leader' has been underlined three times. Every prophecy concerning\n"
+        "anything ELSE has, next to it, a single handwritten word in furious\n"
+        "block letters:\n\n"
+        "    HACK.\n\n"
+        "The word appears, by your count, two hundred and eleven times. Pythia is\n"
+        "described, in a margin near the back, as 'a frakking hack.' The handwriting\n"
+        "is not Roslin's. It is not Cottle's. It is, unmistakably, Tigh's."
+    ),
+    takeable=True,
+))
+
+
+# ─── Tyrol's missing wrench ──────────────────────────────────────────────────
+
+def wrench_on_take_blocked(world):
+    """Returned when the player attempts to take the wrench while Baltar is not
+    distracted. The cmd_take handler can call this to deny pickup."""
+    return (
+        "You reach for the wrench. Baltar appears at your elbow as if conjured.\n\n"
+        "'WHAT,' he says, in the tone of a man whose lab has just been violated,\n"
+        "'are you doing, specialist. Put that DOWN. There is nothing in this lab\n"
+        "that is for you. Put it DOWN.'\n\n"
+        "He takes the wrench back. The wrench has, by Baltar's account, never\n"
+        "existed."
+    )
+
+
+register_item(Item(
+    id="wrench",
+    name="Tyrol's wrench",
+    aliases=["wrench", "tyrol's wrench"],
+    description=(
+        "A heavy, broken-in deck wrench. PROPERTY OF G. TYROL is stamped on the "
+        "handle in three places. It has been used, you can tell, mostly to fix "
+        "Vipers but occasionally — judging by a faint smear on the head — to fix "
+        "people."
+    ),
+    takeable=True,
+))
+
+
 # Patch examine to be dynamic — we'll resolve it in commands.cmd_examine via a callback.
 # Simpler approach: override description via a runtime check in the examine handler.
 # We do that by attaching the dynamic text function as an attribute the handler checks.
@@ -314,4 +580,34 @@ def _attach_dynamic_napkin():
 
 
 _attach_dynamic_napkin()
+
+
+def _attach_other_dynamic_descriptions():
+    from engine.registry import ITEMS as _ITEMS
+    _ITEMS["photo_academy"]._dynamic_description = photo_on_examine  # type: ignore[attr-defined]
+    _ITEMS["sealed_envelope"]._dynamic_description = sealed_envelope_on_examine  # type: ignore[attr-defined]
+
+
+_attach_other_dynamic_descriptions()
+
+
+# ─── Wrench: take-guard for Baltar's lab ──────────────────────────────────────
+
+
+def _wrench_take_guard(world):
+    """Block pickup unless Baltar is distracted (or not present in this room)."""
+    # If we're not in Baltar's lab, no guard.
+    if world.current_room != "baltars_lab":
+        return None
+    if world.flags.get("baltar_distracted"):
+        return None
+    return wrench_on_take_blocked(world)
+
+
+def _attach_take_guards():
+    from engine.registry import ITEMS as _ITEMS
+    _ITEMS["wrench"]._take_guard = _wrench_take_guard  # type: ignore[attr-defined]
+
+
+_attach_take_guards()
 

@@ -9,6 +9,10 @@ class Room:
     short_desc: str            # used on revisit
     long_desc: str             # used on first visit and explicit `look`
     exits: dict[str, str] = field(default_factory=dict)
+    # Conditional exits: direction → (target_room_id, predicate(world) → bool).
+    # Only shown / traversable when the predicate is True. Used for hidden rooms
+    # that require an item or a stat threshold to perceive.
+    hidden_exits: dict[str, tuple] = field(default_factory=dict)
     items: list[str] = field(default_factory=list)
     npcs: list[str] = field(default_factory=list)
     on_enter: Optional[Callable] = None  # fires every entry; gate one-shots with flags

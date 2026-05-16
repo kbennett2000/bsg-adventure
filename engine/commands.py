@@ -115,8 +115,15 @@ def describe_room(world: WorldState, first_visit: bool = False) -> str:
             visible_npc_names.append(phantom)
     if visible_npc_names:
         parts += ["", "Present: " + ", ".join(visible_npc_names) + "."]
-    if room.exits:
-        parts += ["", "Exits: " + ", ".join(sorted(room.exits.keys())) + "."]
+    visible_exit_set = set(room.exits.keys())
+    for direction, (_target, cond) in room.hidden_exits.items():
+        try:
+            if cond(world):
+                visible_exit_set.add(direction)
+        except Exception:
+            pass
+    if visible_exit_set:
+        parts += ["", "Exits: " + ", ".join(sorted(visible_exit_set)) + "."]
     return "\n".join(parts)
 
 
@@ -219,9 +226,19 @@ def cmd_go(world, command, session) -> HandlerResult:
         return HandlerResult(text="Go where? Pick a direction, specialist.", advance_turn=False)
     direction = command.obj.lower().strip()
     room = ROOMS[world.current_room]
-    if direction not in room.exits:
+    new_id = None
+    if direction in room.exits:
+        new_id = room.exits[direction]
+    elif direction in room.hidden_exits:
+        target, cond = room.hidden_exits[direction]
+        try:
+            available = cond(world)
+        except Exception:
+            available = False
+        if available:
+            new_id = target
+    if new_id is None:
         return HandlerResult(text=f"There's no way {direction} from here. The bulkhead disagrees with you.", advance_turn=False)
-    new_id = room.exits[direction]
     world.current_room = new_id
     new_room = ROOMS[new_id]
     first_visit = new_id not in world.visited_rooms
@@ -243,6 +260,12 @@ def cmd_take(world, command, session) -> HandlerResult:
         return HandlerResult(text=f"There's no \"{command.obj}\" here to take.", advance_turn=False)
     if not item.takeable:
         return HandlerResult(text=f"The {item.name} isn't going anywhere with you, specialist. Bolted, sacred, or both.", advance_turn=False)
+    # Optional take-guard: content can attach `_take_guard(world)` returning a string to deny pickup.
+    guard = getattr(item, "_take_guard", None)
+    if callable(guard):
+        denial = guard(world)
+        if denial:
+            return HandlerResult(text=denial)
     move_item_to_inventory(world, item.id)
     return HandlerResult(text=f"You take the {item.name}.")
 
@@ -286,11 +309,14 @@ def cmd_use(world, command, session) -> HandlerResult:
     if item is None:
         return HandlerResult(text=f"You don't have any \"{command.obj}\" to use.", advance_turn=False)
     if command.target:
-        # "use X on Y" — for the slice we only support generic on_use; targeted use can come later
         return HandlerResult(text=f"You wave the {item.name} vaguely at the {command.target}. Nothing happens. You feel watched.")
     if item.on_use is None:
         return HandlerResult(text=f"You can't think of anything productive to do with the {item.name} right now.")
-    return HandlerResult(text=item.on_use(world))
+    result = item.on_use(world)
+    # Items can return a plain string (normal case) or a HandlerResult (ending trigger).
+    if isinstance(result, HandlerResult):
+        return result
+    return HandlerResult(text=result)
 
 
 def cmd_give(world, command, session) -> HandlerResult:

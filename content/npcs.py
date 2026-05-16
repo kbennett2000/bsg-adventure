@@ -289,6 +289,41 @@ def tigh_on_talk(world, topic):
     )
 
 
+def _tigh_receive_stash_bottle(world):
+    """Returning one of the stash bottles to Tigh. Track count; on the third return,
+    he acknowledges you with a swig — completing the stash side quest."""
+    state = world.npc_state.setdefault("tigh", {})
+    returned = state.get("stash_returned", 0) + 1
+    state["stash_returned"] = returned
+    # Bump suspicion either way — he KNOWS you've been finding his hiding spots.
+    bump_stat(world, "suspicion", 4)
+    if returned >= 3:
+        world.flags["quest_stash_complete"] = True
+        bump_stat(world, "morale", 8)
+        bump_stat(world, "exhaustion", 6)
+        return (
+            "Tigh stares at the bottle in your hand. Then at the empty space where\n"
+            "two more bottles used to be. Then at you. His one good eye narrows to\n"
+            "a slit. He says nothing for a long, dangerous moment.\n\n"
+            "Then he laughs. It is a small, raw, surprising laugh.\n\n"
+            "'Well, frak ME, specialist. You found 'em. All three. You found EVERY\n"
+            "frakkin' one. I had a fourth, you know. I had a fourth and I'm not\n"
+            "tellin' you where it is. But you did the work. You did the WORK.'\n\n"
+            "He takes the bottle from you. He takes a long, expressive pull. Then\n"
+            "he hands it back. The bottle is, somehow, only slightly less full.\n\n"
+            "'Have a swig, son. Have a frakkin' swig. You earned it. Don't make me\n"
+            "regret this.'"
+        )
+    return (
+        "Tigh takes the bottle from you. He weighs it. He squints at you. He squints\n"
+        "harder.\n\n"
+        f"'Where in the cosmic FRAK did you find THIS one, {_tigh_next_wrong_name(world)}.'\n\n"
+        "He does not, you note, deny that it's his. He does not, you note, ask for\n"
+        "the others. He sets the bottle down on the toilet tank like he's filing a\n"
+        "report. He looks at you for a long, evaluative second. Then he turns away."
+    )
+
+
 register_npc(NPC(
     id="tigh",
     name="Colonel Tigh",
@@ -299,6 +334,11 @@ register_npc(NPC(
         "work that nobody can know about. The work appears to be 'drinking.'"
     ),
     on_talk=tigh_on_talk,
+    on_give={
+        "flask": _tigh_receive_stash_bottle,
+        "stash_bottle_mess": _tigh_receive_stash_bottle,
+        "stash_bottle_hangar": _tigh_receive_stash_bottle,
+    },
 ))
 
 
@@ -615,14 +655,131 @@ def starbuck_on_talk(world, topic):
     topic_lower = topic.lower()
 
     if topic_lower in ("triad", "cards"):
+        # First-time cards triggers the quest with a choice menu in-character.
+        if not world.flags.get("quest_cards_started"):
+            world.flags["quest_cards_started"] = True
+            bump_stat(world, "morale", 3)
+            return (
+                "'Sit down.' She deals. The cards come out crooked because she shuffles\n"
+                "like she's beating somebody up. Three rounds in, she discovers you have\n"
+                "no money. She does not, technically, care.\n\n"
+                "'Here's the question, specialist. You're gonna lose. We both know\n"
+                "you're gonna lose. The only question is HOW you're gonna lose. You can\n"
+                "lose GRACEFUL. You can lose FLIRTY. You can CHEAT, which you will be\n"
+                "bad at, which I will catch. You can ACCUSE ME of cheating, which is\n"
+                "honestly the most interesting option. Pick. One.'\n\n"
+                "(Pick one: graceful, flirt, cheat, or accuse.)"
+            )
+        if world.flags.get("quest_cards_resolved"):
+            return (
+                "'We already played, specialist. Stop pawing at the deck. I am not\n"
+                "running this hand twice for free.'"
+            )
+        return (
+            "'Pick, specialist. Graceful, flirt, cheat, or accuse. I'm not getting\n"
+            "any younger and I haven't dealt the second hand.'"
+        )
+
+    if topic_lower in ("graceful", "lose graceful", "gracefully"):
+        if not world.flags.get("quest_cards_started"):
+            return "She squints. 'Graceful WHAT, specialist. Ask me to play cards first.'"
+        if world.flags.get("quest_cards_resolved"):
+            return "'Already played, specialist. You played graceful. We are NOT replaying.'"
+        world.flags["quest_cards_resolved"] = True
+        world.flags["quest_cards_choice"] = "graceful"
         bump_stat(world, "morale", 5)
         return (
-            "'Sit down.' She deals. The cards come out crooked because she shuffles\n"
-            "like she's beating somebody up. Three rounds in, she discovers you have\n"
-            "no money and lose by reflex. She wins all of your shift bonuses for the\n"
-            "month. She does not gloat. She just nods, like the universe has finally\n"
-            "made sense. 'Get out of my sight, specialist.' She has already forgotten\n"
-            "you."
+            "You lose. You lose well. You shake her hand. You tip your imaginary cap.\n\n"
+            "She nods, slowly. 'Class, specialist. Class. Most pilots can't manage\n"
+            "this. Most pilots manage badly. You did the thing.'\n\n"
+            "She does not, you note, kiss you. She does not, you note, hit on you.\n"
+            "She does, you note, look at you for an extra half-second when she says\n"
+            "'class.' Some part of you is hopeful. Some part of you knows better."
+        )
+
+    if topic_lower in ("flirt", "lose flirty", "flirty"):
+        if not world.flags.get("quest_cards_started"):
+            return "She raises an eyebrow. 'Flirt WHAT, specialist. Start a game first.'"
+        if world.flags.get("quest_cards_resolved"):
+            return "'Already played, specialist.'"
+        world.flags["quest_cards_resolved"] = True
+        world.flags["quest_cards_choice"] = "flirt"
+        bump_stat(world, "morale", 7)
+        # Bump romance, but don't trigger ending here (single bump).
+        result = _romance_apply(
+            world,
+            "starbuck",
+            beat_texts=[
+                "You lose every hand. You lose them WITH FEELING. You look up over your\n"
+                "cards. You hold her gaze. You play one specific bad card with very\n"
+                "specific eye contact.\n\n"
+                "She laughs out loud. 'OH. OH, specialist. Smooth. Smooth-ish. I'll\n"
+                "TAKE smooth-ish.'\n\n"
+                "She kicks Apollo's chair out from under him without looking. Apollo\n"
+                "lands hard. Apollo deserved it. Apollo's expression is doing a lot.",
+                "You lose. You lose flirtatiously. She kisses you across the table.\n"
+                "Apollo makes a wet noise.",
+                "You lose. She kisses you again. Apollo has, by this point, left the\n"
+                "rec room.",
+            ],
+            complicated_text=(
+                "She looks at you over the cards. 'Specialist. Listen. The flirting was\n"
+                "fun. The flirting was REAL fun. The flirting is, also, over. Apollo\n"
+                "is sulking in a Viper and somebody has to go pry him out. That somebody\n"
+                "is me. Go find a better problem.'"
+            ),
+        )
+        return result
+
+    if topic_lower in ("cheat", "lose cheating"):
+        if not world.flags.get("quest_cards_started"):
+            return "She narrows her eyes. 'Cheat WHAT, specialist. Cards first.'"
+        if world.flags.get("quest_cards_resolved"):
+            return "'Already played, specialist. You got caught. Move along.'"
+        world.flags["quest_cards_resolved"] = True
+        world.flags["quest_cards_choice"] = "cheat"
+        bump_stat(world, "morale", -15)  # public humiliation lands hard
+        bump_stat(world, "suspicion", 12)
+        return (
+            "You attempt to palm a card. Starbuck has been watching you palm the\n"
+            "card from approximately the moment the card existed. She watches the\n"
+            "palm. She watches the un-palm. She watches the desperate hide-the-palm\n"
+            "shuffle. She watches you sweat.\n\n"
+            "'WOW,' she says. 'Wow. Specialist. That was BAD. That was historically\n"
+            "bad. I have to tell Apollo about that. I have to tell EVERYONE about\n"
+            "that. The bridge crew is going to hear about that. The bridge crew is\n"
+            "going to TELL the deck crew. You are GOING TO BE a story, specialist.'\n\n"
+            "Apollo is laughing. Apollo cannot stop laughing. You walk away. The\n"
+            "laughing continues until you reach the corridor."
+        )
+
+    if topic_lower in ("accuse", "accuse her", "accuse starbuck"):
+        if not world.flags.get("quest_cards_started"):
+            return "She tilts her head. 'Accuse WHO of WHAT, specialist. Cards first.'"
+        if world.flags.get("quest_cards_resolved"):
+            return "'Already played. We had words. We're done.'"
+        world.flags["quest_cards_resolved"] = True
+        world.flags["quest_cards_choice"] = "accuse"
+        bump_stat(world, "morale", 6)
+        # Burn the Starbuck romance to "complicated" — she respects the move but it kills it.
+        # Force the romance to its terminal state.
+        actives = world.flags.setdefault("active_romances", [])
+        if "starbuck" in actives:
+            actives.remove("starbuck")
+        world.flags["romance_starbuck"] = 4
+        return (
+            "You set your cards down. You meet her eyes. You say, very evenly,\n"
+            "'You're cheating, Lieutenant.'\n\n"
+            "The rec room goes silent. Apollo stops breathing. A pilot at the next\n"
+            "table puts down a sandwich.\n\n"
+            "Starbuck stares at you. For one full second. For another full second.\n"
+            "Then she throws her head back and LAUGHS, loud and real.\n\n"
+            "'OH. OH I LIKE you, specialist. I LIKE you. You're correct. Of course\n"
+            "I'm cheating. I have been cheating since I was eight. Pilots cheat. It's\n"
+            "in the regs.'\n\n"
+            "She gathers the cards in one motion. 'You and me, specialist? Not gonna\n"
+            "happen. We respect each other too much. Go away. I have to start cheating\n"
+            "AT Apollo, who has noticed nothing so far.'"
         )
 
     if topic_lower in ("arm wrestling", "arm", "wrestle", "wrestling"):
@@ -894,10 +1051,18 @@ def baltar_on_talk(world, topic):
         )
 
     if topic_lower in ("project juno", "juno"):
+        # Critical: this is the misdirection that distracts Baltar away from his
+        # lab. Used by the wrench-quest take-guard.
+        world.flags["baltar_distracted"] = True
+        bump_stat(world, "suspicion", 3)
         return (
             "'WHAT.' Long pause. 'WHAT.' He laughs. The laugh is unattached to his\n"
-            "face. 'Project Juno is a — that is a — that is classified work,\n"
-            "specialist. CLASSIFIED. Move along.'"
+            "face. 'Project Juno is a — that is a — that is CLASSIFIED, specialist.\n"
+            "How — how do you EVEN — who TOLD you — wait. Wait. I need — I need to\n"
+            "— excuse me. EXCUSE me.'\n\n"
+            "He turns away. He paces. He paces FAST. He addresses the empty chair\n"
+            "in a series of furious whispers. The lab, for the moment, has lost\n"
+            "his attention entirely. The lab is, for the moment, unguarded."
         )
 
     if topic_lower in ("self", "name"):
@@ -1124,12 +1289,92 @@ def roslin_on_talk(world, topic):
     topic_lower = topic.lower()
 
     if topic_lower in ("prophecy", "pythia", "scriptures", "religion", "faith"):
+        # Opens the prophecy mini-quest by surfacing her vision.
+        if not world.flags.get("quest_prophecy_started"):
+            world.flags["quest_prophecy_started"] = True
+            return (
+                "She closes the scriptures around her thumb to hold the page.\n\n"
+                "'Pythia is very specific, Specialist. A dying leader. A ragtag fleet.\n"
+                "Twelve sources of guidance. And ONE young specialist of dubious\n"
+                "provenance who shows up at the right moment with a small folded\n"
+                "paper.\n\n"
+                "I had a vision, Specialist. Yesterday. About you. SPECIFICALLY about\n"
+                "you. I have not had a vision about a specialist before. There was\n"
+                "a figure in a white robe. The figure was unimportant in itself, but\n"
+                "the figure was holding the small folded paper.\n\n"
+                "Were you the figure in the white robe? Be honest, please. Both\n"
+                "answers are important. Both answers are also, possibly, wrong.'\n\n"
+                "(You can answer: yes, no, or maybe.)"
+            )
+        if world.flags.get("quest_prophecy_resolved"):
+            return (
+                "'We had that conversation, Specialist. Whatever answer you gave was\n"
+                "the wrong one. I'm at peace with it. The scriptures, on the other\n"
+                "hand, are doing what they always do, which is nothing visible.'"
+            )
         return (
-            "'Pythia is very specific, Specialist. A dying leader. A ragtag fleet.\n"
-            "Twelve sources of guidance. And one — I want to be clear — ONE young\n"
-            "specialist of dubious provenance who shows up at the right moment with\n"
-            "a small folded paper. I have been waiting for the small folded paper.\n"
-            "Forgive me for being direct.'"
+            "'I am still waiting for your answer, Specialist. Yes, no, or maybe.\n"
+            "I have very limited time. As I have, possibly, mentioned.'"
+        )
+
+    if topic_lower in ("yes", "yes the robe", "white robe", "robe", "i was"):
+        if not world.flags.get("quest_prophecy_started"):
+            return "Her eyebrows go up. 'Yes WHAT, Specialist. We have not begun a topic.'"
+        if world.flags.get("quest_prophecy_resolved"):
+            return "'We've had this conversation, Specialist.'"
+        world.flags["quest_prophecy_resolved"] = True
+        world.flags["quest_prophecy_choice"] = "yes"
+        bump_stat(world, "suspicion", 12)
+        return (
+            "She nods, slowly. She is, you note, disappointed. She is, you note,\n"
+            "trying not to show it.\n\n"
+            "'Of course. Of course you were. That is exactly what the figure in\n"
+            "the white robe would say. The figure in the white robe was, in the\n"
+            "vision, a LIAR. The scriptures are very specific about this. I am,\n"
+            "Specialist, very sorry to inform you that by saying yes, you have\n"
+            "demonstrated that you were not the figure in the white robe.\n\n"
+            "Or you were, and you ARE a liar. Both readings are correct.'\n\n"
+            "She returns to her page. You can feel the bridge crew looking at you\n"
+            "from three decks away, somehow."
+        )
+
+    if topic_lower in ("no", "not me", "wasn't me", "no the robe"):
+        if not world.flags.get("quest_prophecy_started"):
+            return "Her eyebrows go up. 'No WHAT, Specialist.'"
+        if world.flags.get("quest_prophecy_resolved"):
+            return "'We've had this conversation.'"
+        world.flags["quest_prophecy_resolved"] = True
+        world.flags["quest_prophecy_choice"] = "no"
+        bump_stat(world, "morale", -5)
+        return (
+            "She nods, slowly. She is, you note, disappointed. She is, you note,\n"
+            "trying not to show it.\n\n"
+            "'Of course not. Of course it wasn't you. That is exactly what the\n"
+            "figure in the white robe would say. The figure in the white robe\n"
+            "denied being the figure in the white robe THROUGHOUT my vision. The\n"
+            "scriptures are very clear that this is a hallmark of the figure. By\n"
+            "denying it, you have, Specialist, very specifically demonstrated that\n"
+            "you ARE the figure.\n\n"
+            "Or you aren't. Both readings are correct.'\n\n"
+            "She returns to her page. The page, you note, was the same page when\n"
+            "you walked in. The page will be the same page when you leave."
+        )
+
+    if topic_lower in ("maybe", "i don't know", "dunno", "not sure", "unclear"):
+        if not world.flags.get("quest_prophecy_started"):
+            return "She tilts her head. 'Maybe WHAT, Specialist.'"
+        if world.flags.get("quest_prophecy_resolved"):
+            return "'We've had this conversation.'"
+        world.flags["quest_prophecy_resolved"] = True
+        world.flags["quest_prophecy_choice"] = "maybe"
+        bump_stat(world, "suspicion", 8)
+        bump_stat(world, "morale", -3)
+        return (
+            "She nods. 'Maybe. Of course. That is also what the figure in the white\n"
+            "robe would say, because the figure in the white robe is, in the vision,\n"
+            "EVASIVE. By being evasive, you have demonstrated that you ARE the\n"
+            "figure. Or you aren't. Both readings are correct.'\n\n"
+            "She returns to the page. The page, somehow, has aged."
         )
 
     if topic_lower in ("napkin", "paper", "folded paper", "numbers", "scrap"):
@@ -1325,9 +1570,49 @@ def tyrol_on_talk(world, topic):
             "specialist who asks questions like this.'"
         )
 
+    if topic_lower in ("wrench", "missing wrench", "my wrench"):
+        if world.flags.get("quest_wrench_complete"):
+            return (
+                "'You got my wrench back. I owe you. I will not, on this deck, in this\n"
+                "uniform, express affection, specialist. But I'll buy you a drink off-\n"
+                "shift if the gods grant us an off-shift. Which they won't. Move along.'"
+            )
+        return (
+            "'My WRENCH, specialist. My FRAKKIN' wrench. PROPERTY OF G. TYROL, stamped\n"
+            "three times on the handle. Missing for three days. I have a theory about\n"
+            "where it is. The theory is BALTAR. The theory is BALTAR. I am NOT going\n"
+            "to go down there myself because if I go down there myself I will commit a\n"
+            "FRAKKIN' MURDER. So if you happen to be down there, and the wrench happens\n"
+            "to be down there, and the wrench happens to come BACK with you, you and I\n"
+            "are gonna be the best frakkin' friends this side of the Cyrannus system.'"
+        )
+
     return (
         "Tyrol blinks slowly. 'I don't know. I'm tired. Ask me later. Ask me with\n"
         "snacks.'"
+    )
+
+
+def _tyrol_receive_wrench(world):
+    if "wrench" in world.inventory:
+        world.inventory.remove("wrench")
+    world.flags["quest_wrench_complete"] = True
+    bump_stat(world, "morale", 8)
+    bump_stat(world, "suspicion", -5)  # the chief is a powerful ally
+    return (
+        "Tyrol takes the wrench between both grease-blackened hands like it's the\n"
+        "first child he ever held. His face does something his face does not, on\n"
+        "balance, have the structural integrity to do.\n\n"
+        "'You. SPECIALIST. You did it. YOU FOUND HER.'\n\n"
+        "He puts the wrench back in his belt with the slow ceremony of a man\n"
+        "restoring a relic. He looks at you. He nods, exactly once.\n\n"
+        "'Anyone gives you trouble on my deck, you come to me. Anyone gives you\n"
+        "trouble OFF my deck, you ALSO come to me. We are gonna be the best frakkin'\n"
+        "friends this side of the Cyrannus system. Now get OUT of my hangar.'\n\n"
+        "(You note, in passing, that the service hatch in your bunk has been\n"
+        "rattling at you for a while now. The wrench is, conveniently, no longer\n"
+        "in your inventory. The wrench has, more conveniently, been used on the\n"
+        "way out and the hatch is no longer your problem.)"
     )
 
 
@@ -1342,7 +1627,10 @@ register_npc(NPC(
         "forehead. He sees you. He has decided not to react to seeing you yet."
     ),
     on_talk=tyrol_on_talk,
-    on_give={"algae_bar": _tyrol_receive_algae},
+    on_give={
+        "algae_bar": _tyrol_receive_algae,
+        "wrench": _tyrol_receive_wrench,
+    },
 ))
 
 
@@ -1967,6 +2255,95 @@ def dualla_on_talk(world, topic):
     return (
         "She does not answer. She is judging. The judging is, in its way, the answer."
     )
+
+
+# ─── Cook (Mystery Meat) ──────────────────────────────────────────────────────
+
+
+def cook_on_talk(world, topic):
+    bump_stat(world, "morale", -1)
+
+    if topic is None:
+        return (
+            "The cook does not turn around. The cook is stirring a vat. The vat has\n"
+            "been being stirred for as long as you can remember being a person.\n\n"
+            "'Whaddaya want, specialist. Move it along. Line's gonna form. Line's\n"
+            "ALWAYS gonna form.'"
+        )
+
+    t = topic.lower()
+
+    if t in ("meat", "protein", "mystery meat", "lasagna", "vat"):
+        bump_stat(world, "suspicion", 3)
+        return (
+            "The cook stops stirring. The cook turns around. The cook is wearing an\n"
+            "apron that has been an apron since the second war.\n\n"
+            "'Specialist. We are NOT going to talk about the meat. We are NOT going\n"
+            "to talk about the protein. We are NOT going to talk about the lasagna.\n"
+            "We are CERTAINLY not going to talk about the VAT. The vat is fine. The\n"
+            "vat has always BEEN fine. Now get OUT of my kitchen.'\n\n"
+            "The cook is shaking very slightly. The cook turns back to the vat. The\n"
+            "cook resumes stirring."
+        )
+
+    if t in ("engram", "crewman engram", "rat", "skeleton"):
+        bump_stat(world, "suspicion", 5)
+        return (
+            "The cook stops dead. The cook does not turn around. The cook's voice\n"
+            "is suddenly very flat.\n\n"
+            "'I don't know what you're talkin' about, specialist. I don't know any\n"
+            "Engram. I don't know any rats. I don't know what's in the vat. The vat\n"
+            "knows what's in the vat. Don't ASK the vat. Don't ASK ME.'\n\n"
+            "The cook is now stirring the vat very fast."
+        )
+
+    if t in ("tigh", "xo", "colonel"):
+        return (
+            "'The XO?' The cook laughs. The laugh has nothing in it. 'The XO has not\n"
+            "eaten a lasagna in nineteen years, specialist. The XO knows what's in\n"
+            "the lasagna. The XO is, possibly, the only person on this ship besides\n"
+            "me who knows what's in the lasagna. We have an UNDERSTANDING.'"
+        )
+
+    if t in ("algae", "algae bar", "bar"):
+        return (
+            "'Algae bars are FINE, specialist. The bars are NOT the lasagna. The\n"
+            "bars are PROCESSED. The lasagna is what's LEFT.'\n\n"
+            "The cook says 'left' in a way that is upsetting."
+        )
+
+    if t in ("self", "name"):
+        return (
+            "The cook waves a ladle at you. 'I cook. That's what I do. Names are\n"
+            "for people whose VATS are not the SOURCE OF THEIR WHOLE FRAKKIN'\n"
+            "IDENTITY. Move it along.'"
+        )
+
+    if t in ("hadrian", "specialist hadrian", "crewman"):
+        return (
+            "'Hadrian eats two trays of lasagna a day, specialist. TWO. He has\n"
+            "asked me three times what's in it. I have told him three times that\n"
+            "he doesn't want to know. He keeps eating it. Frakkin' machine.'"
+        )
+
+    return (
+        "The cook does not respond. The cook stirs. The vat receives a single\n"
+        "additional unidentified contribution from a place you cannot see."
+    )
+
+
+register_npc(NPC(
+    id="cook",
+    name="The Cook",
+    aliases=["cook", "the cook", "chef"],
+    description=(
+        "An indeterminate person in a stained apron, stirring a vat that has been "
+        "stirred for the duration of the war. The cook does not, as a matter of "
+        "policy, make eye contact with anyone who has not personally contributed "
+        "to the vat."
+    ),
+    on_talk=cook_on_talk,
+))
 
 
 register_npc(NPC(

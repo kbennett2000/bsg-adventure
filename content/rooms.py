@@ -4,7 +4,7 @@ from random import choice
 
 from engine.models import Room
 from engine.registry import register_room
-from engine.world import bump_stat, move_item_to_room, witness_once
+from engine.world import bump_stat, get_stat, move_item_to_room, witness_once
 
 
 # ─── Environmental Control (player's bunk) ────────────────────────────────────
@@ -41,9 +41,18 @@ register_room(Room(
         "console in the corner blinks at a rate that feels personal. Your dented locker "
         "stands sentry by your rack. On the small fold-down table beside the bunk, a "
         "half-eaten algae bar waits with the patience of something that has nowhere "
-        "else to be."
+        "else to be. There is a service hatch in the deck plate behind the pipes that "
+        "you have, professionally, ignored for two years."
     ),
     exits={"east": "corridor_c12", "out": "corridor_c12"},
+    hidden_exits={
+        # Service hatch to the algae processor — openable with Tyrol's wrench, or always
+        # afterward (the hatch stays unbolted once you've been through it).
+        "down": (
+            "algae_processor",
+            lambda w: "wrench" in w.inventory or w.flags.get("entered_algae_processor", False),
+        ),
+    },
     items=["algae_bar", "mop", "locker", "console", "bunk"],
     npcs=["hadrian"],
     on_enter=env_control_on_enter,
@@ -51,6 +60,16 @@ register_room(Room(
         "pipes": "Coolant pipes. They hum. One of them sweats. You have a complicated relationship with that one.",
         "ceiling": "Pipes. Ducts. A handwritten sign that says 'DUCK, DUMBASS.' The sign is below the ducts. It is correct.",
         "rack": "Your rack. Bottom of a three-high stack. Still warm.",
+        "hatch": (
+            "A service hatch in the deck plate behind the pipes. Bolted shut. The "
+            "bolts are deck-grade hex. You would need a heavy-duty wrench to even "
+            "pretend to open it. Specifically: Chief Tyrol's wrench. Not by name. "
+            "Just by spec. Probably."
+        ),
+        "service hatch": (
+            "A service hatch in the deck plate behind the pipes. Bolted shut. Hex "
+            "bolts. Tyrol's frakkin' wrench would do it, if you had it."
+        ),
     },
 ))
 
@@ -182,6 +201,28 @@ def head_examine_floor(world):
     )
 
 
+def head_examine_loose_tile(world):
+    """Find Tigh's flask under a loose tile (stash quest bottle #1)."""
+    if world.flags.get("found_flask"):
+        return (
+            "The loose tile is back where it was. The cavity beneath it is empty.\n"
+            "You suspect the XO has noticed. You suspect the XO has not noticed.\n"
+            "Both possibilities feel correct."
+        )
+    if "flask" in world.inventory or "flask" in world.room_items.get("head_deck_5", []):
+        return "The loose tile is loose. You can see down into the cavity. It is empty now."
+    world.flags["found_flask"] = True
+    bump_stat(world, "suspicion", 5)
+    move_item_to_room(world, "flask", "head_deck_5")
+    return (
+        "One of the tiles near the middle stall is loose. You crouch. You pry it up\n"
+        "with the edge of your boot. Underneath, in a cavity that should not exist:\n"
+        "a hip flask. Monogrammed S.T.\n\n"
+        "From the stall, the humming pauses. The humming resumes. The XO does not\n"
+        "appear to have noticed. The XO has almost certainly noticed."
+    )
+
+
 def head_examine_stall(world):
     base = (
         "The middle stall door is closed. Through the slats you can see a silhouette "
@@ -219,7 +260,9 @@ register_room(Room(
         "stall": head_examine_stall,
         "stalls": "Three stalls. One occupied by something approximating a senior officer.",
         "floor": head_examine_floor,
-        "tile": head_examine_floor,
+        "tile": head_examine_loose_tile,
+        "loose tile": head_examine_loose_tile,
+        "tiles": head_examine_loose_tile,
         "ground": head_examine_floor,
         "mirror": (
             "Cracked. Your reflection looks tired. You make eye contact with yourself. "
@@ -256,6 +299,28 @@ def mess_hall_on_enter(world):
     return choice(MESS_ENCOUNTERS)
 
 
+def mess_hall_examine_kitchen(world):
+    """Looking at the kitchen reveals the stash thermos hidden behind serving trays."""
+    if world.flags.get("found_stash_mess"):
+        return (
+            "The kitchen behind the serving line. The cook is not in there at the\n"
+            "moment. The cook will be back in approximately twenty seconds. The\n"
+            "thermos slot you saw earlier is empty. You should leave."
+        )
+    if "stash_bottle_mess" in world.inventory or "stash_bottle_mess" in world.room_items.get("mess_hall", []):
+        return "The cook has, you note, been watching the serving line more carefully than usual."
+    world.flags["found_stash_mess"] = True
+    bump_stat(world, "suspicion", 5)
+    move_item_to_room(world, "stash_bottle_mess", "mess_hall")
+    return (
+        "The kitchen behind the serving line. The cook is not in there at the\n"
+        "moment. You can see, partially hidden behind a stack of trays, a thermos\n"
+        "labelled COFFEE — DO NOT DRINK — TIGH in three different handwritings.\n\n"
+        "You could, in theory, simply walk up and take it. You have approximately\n"
+        "twenty seconds before the cook returns."
+    )
+
+
 register_room(Room(
     id="mess_hall",
     name="Mess Hall",
@@ -274,14 +339,36 @@ register_room(Room(
         "north": "corridor_b",
     },
     items=[],
-    npcs=[],
+    npcs=["cook"],
     on_enter=mess_hall_on_enter,
     on_examine={
         "lasagna": "The lasagna. Layers of grey upon grey upon grey. The grey is structural.",
+        "protein": (
+            "Today's protein is, allegedly, 'reconstituted.' Reconstituted from "
+            "what is the question the cook will refuse to answer at increasing "
+            "volumes."
+        ),
+        "meat": (
+            "Today's protein is, allegedly, 'reconstituted.' Reconstituted from "
+            "what is the question the cook will refuse to answer at increasing "
+            "volumes."
+        ),
+        "mystery meat": (
+            "Today's protein is, allegedly, 'reconstituted.' Reconstituted from "
+            "what is the question the cook will refuse to answer at increasing "
+            "volumes."
+        ),
         "tray": "A regulation tray. Three compartments. All grey. The grey is structural.",
         "pilot": "Crying. Tray untouched. Probably named something tragic like Cally or Crash. Definitely doomed.",
         "specialists": "Same specialists you saw last week. Same argument. Same lasagna. Same algae.",
         "table": "Bolted to the deck. The table has been here longer than the war. The table will outlive us all.",
+        "kitchen": mess_hall_examine_kitchen,
+        "serving line": mess_hall_examine_kitchen,
+        "vat": (
+            "The protein vat. Large, dented, somehow steaming on both sides. The "
+            "vat is older than you are. The vat was not on the original Galactica "
+            "manifest. Nobody is sure where it came from. Nobody is asking."
+        ),
     },
 ))
 
@@ -400,7 +487,7 @@ register_room(Room(
         "west": "corridor_b",
         "out": "corridor_b",
     },
-    items=[],
+    items=["triad_cards"],
     npcs=["starbuck", "apollo"],
     on_enter=pilots_rec_on_enter,
     on_examine={
@@ -469,7 +556,7 @@ register_room(Room(
         "east": "corridor_b",
         "out": "corridor_b",
     },
-    items=[],
+    items=["wrench", "cylon_detector"],
     npcs=["baltar"],
     on_enter=baltars_lab_on_enter,
     on_examine={
@@ -509,6 +596,49 @@ def hangar_on_enter(world):
     return choice(HANGAR_ENCOUNTERS)
 
 
+def hangar_examine_raptor(world):
+    """The hangar stash bottle is hidden in a Raptor's gun port."""
+    if world.flags.get("found_stash_hangar"):
+        return (
+            "A Raptor. Squat, ugly, beloved. The gun-port slot you stashed nothing in\n"
+            "is, conspicuously, empty. Boomer has been watching you since you arrived.\n"
+            "She has not, technically, said anything. She has not, technically, looked\n"
+            "away."
+        )
+    if "stash_bottle_hangar" in world.inventory or "stash_bottle_hangar" in world.room_items.get("hangar_deck", []):
+        return "A Raptor. Squat, ugly, beloved. Recently disturbed by someone. Probably you."
+    world.flags["found_stash_hangar"] = True
+    bump_stat(world, "suspicion", 5)
+    move_item_to_room(world, "stash_bottle_hangar", "hangar_deck")
+    return (
+        "A Raptor. Squat, ugly, beloved. Someone has spray-painted 'LUCKY' on the\n"
+        "nose. The paint is fresh.\n\n"
+        "You walk around the back of it. Tucked into the port-side gun mount — a\n"
+        "place where no munition or instrument has any business being — is a\n"
+        "regulation grease can. Heavier than a grease can has any business being.\n"
+        "It sloshes wrong.\n\n"
+        "Boomer, across the deck, does not look at you. She also does not stop\n"
+        "looking at you. Both facts coexist."
+    )
+
+
+def hangar_examine_floor_panel(world):
+    """The cylon-haunted storage bay is only perceivable at high CYLON_VIBES."""
+    cv = get_stat(world, "cylon_vibes")
+    if cv < 50:
+        return (
+            "The deck. Plating. Scuffed. The same scuffs you mopped last week. There\n"
+            "is nothing unusual about the deck. You feel slightly disappointed."
+        )
+    return (
+        "The deck plate near the back wall is wrong. Not damaged. Not loose. Just\n"
+        "wrong. You can see, now — now that you can see — that one of the plates\n"
+        "isn't bolted at the corners but HUMS at them. The hum is at four notes.\n"
+        "It loops. It loops AGAIN. You take a breath. You should not go down there.\n"
+        "You are going to go down there. Down. The exit is down."
+    )
+
+
 register_room(Room(
     id="hangar_deck",
     name="Hangar Deck",
@@ -529,13 +659,26 @@ register_room(Room(
         "south": "corridor_b",
         "out": "corridor_b",
     },
+    hidden_exits={
+        # The Cylon-haunted storage bay. You don't see it unless you're already gone enough.
+        "down": ("storage_bay", lambda w: get_stat(w, "cylon_vibes") >= 50),
+    },
     items=[],
     npcs=["tyrol", "boomer"],
     on_enter=hangar_on_enter,
     on_examine={
         "viper": "A Viper. Beautiful. Lethal. Probably leaking. You are not authorized to fix this one. You wish you were.",
-        "raptor": "A Raptor. Squat, ugly, beloved. Someone has spray-painted 'LUCKY' on the nose. The paint is fresh. Boomer is standing very close to it.",
-        "wrench": "A wrench. Inert. Innocent. About to be involved in something.",
+        "raptor": hangar_examine_raptor,
+        "raptors": hangar_examine_raptor,
+        "wrench": (
+            "There's no wrench here. Tyrol's wrench has, by his own account, been "
+            "missing for three days. He has not, technically, accused anyone yet."
+        ),
+        "deck": hangar_examine_floor_panel,
+        "floor": hangar_examine_floor_panel,
+        "plate": hangar_examine_floor_panel,
+        "plates": hangar_examine_floor_panel,
+        "back wall": hangar_examine_floor_panel,
     },
 ))
 
@@ -629,7 +772,7 @@ register_room(Room(
         "north": "corridor_a",
         "out": "corridor_a",
     },
-    items=[],
+    items=["scrolls"],
     npcs=["roslin", "cottle", "helo"],
     on_enter=sickbay_on_enter,
     on_examine={
@@ -664,6 +807,45 @@ def adamas_quarters_on_enter(world):
     )
 
 
+def adama_quarters_examine_drawer(world):
+    """Open the desk drawer and find the academy photo."""
+    if world.flags.get("found_academy_photo"):
+        return (
+            "The drawer is open. The photograph is — wherever you put it. You "
+            "remember where you put it. You also remember wishing you hadn't put "
+            "it anywhere. You remember wishing you hadn't seen it."
+        )
+    if "photo_academy" in world.inventory or "photo_academy" in world.room_items.get("adamas_quarters", []):
+        return "The drawer is half open. There's nothing of consequence left inside."
+    world.flags["found_academy_photo"] = True
+    move_item_to_room(world, "photo_academy", "adamas_quarters")
+    return (
+        "You ease the desk drawer open. Inside: pens. A box of cigars. A small\n"
+        "bottle of something brown. A pocketwatch, stopped. And, lying face-down\n"
+        "at the bottom of the drawer in the specific way that face-down photographs\n"
+        "always lie: a photograph.\n\n"
+        "You should not turn it over.\n\n"
+        "(You're going to turn it over.)"
+    )
+
+
+def adama_quarters_examine_panel(world):
+    """The hidden workshop door — only NOTICEABLE if you're suspicious enough."""
+    sus = get_stat(world, "suspicion")
+    if sus < 40:
+        return (
+            "Standard officer-grade wall paneling. Wood-trim over insulation. You "
+            "look at it. It looks like a wall."
+        )
+    return (
+        "Now that you're looking — now that you're REALLY looking — there's a seam\n"
+        "in the paneling. A door-shaped seam. Hinges on the inside. You can see,\n"
+        "barely, the outline of a small handle inset flush with the wood. North.\n"
+        "Behind the desk. A door that is, technically, not a door. Until you go\n"
+        "through it."
+    )
+
+
 register_room(Room(
     id="adamas_quarters",
     name="Adama's Quarters",
@@ -683,6 +865,10 @@ register_room(Room(
         "east": "corridor_a",
         "out": "corridor_a",
     },
+    hidden_exits={
+        # Adama's secret workshop — only visible to a sufficiently paranoid eye.
+        "north": ("adamas_workshop", lambda w: get_stat(w, "suspicion") >= 40),
+    },
     items=[],
     npcs=[],
     on_enter=adamas_quarters_on_enter,
@@ -695,6 +881,13 @@ register_room(Room(
             "The model ship. Allegedly being built. Has not progressed in three "
             "years. One mast is on backwards. Nobody has the heart to tell him."
         ),
+        "drawer": adama_quarters_examine_drawer,
+        "drawers": adama_quarters_examine_drawer,
+        "panel": adama_quarters_examine_panel,
+        "wall": adama_quarters_examine_panel,
+        "paneling": adama_quarters_examine_panel,
+        "seam": adama_quarters_examine_panel,
+        "door": adama_quarters_examine_panel,
         "glasses": (
             "Two glasses on the desk. One has lipstick on it. The lipstick is, on "
             "inspection, not lipstick. It is the faintly red rim of someone who "
@@ -707,13 +900,8 @@ register_room(Room(
         "desk": (
             "A handsome wooden desk. Cluttered with reports, letters, a half-empty "
             "glass of something brown, and one (1) framed photograph turned face "
-            "down."
-        ),
-        "photograph": (
-            "Face down. Some impulses you respect. You leave it face down."
-        ),
-        "photo": (
-            "Face down. Some impulses you respect. You leave it face down."
+            "down. The drawer below is closed. The drawer is, as drawers go, "
+            "intriguing."
         ),
     },
 ))
@@ -865,7 +1053,7 @@ register_room(Room(
         "south": "corridor_a",
         "out": "corridor_a",
     },
-    items=[],
+    items=["sealed_envelope"],
     npcs=["adama", "gaeta", "dualla"],
     on_enter=cic_on_enter,
     on_examine={
@@ -883,5 +1071,218 @@ register_room(Room(
         ),
         "adama": "The Old Man. At the plot. Hands clasped. Staring at something that isn't there. You feel like you shouldn't be here. You also feel like nobody is going to stop you.",
         "scope": "The DRADIS scope. Sweeping. Nothing on it. Yet.",
+        "envelope": (
+            "A sealed envelope sits on a corner of the secondary plot. Three words "
+            "on the front in red marker: DO NOT OPEN. Nobody is guarding it. "
+            "Nobody is, in fact, looking at it. The CIC is, despite the activity, "
+            "somehow not looking at it."
+        ),
+    },
+))
+
+
+# ─── Algae Processor (hidden behind environmental control) ────────────────────
+
+
+def algae_processor_on_enter(world):
+    if world.flags.get("entered_algae_processor"):
+        return None
+    world.flags["entered_algae_processor"] = True
+    world.flags["mystery_meat_solved"] = True
+    bump_stat(world, "morale", -10)        # what you learn here is upsetting
+    bump_stat(world, "cylon_vibes", -3)    # but it's all human, depressingly
+    return (
+        "The processor.\n\n"
+        "There is one vat. The vat is the vat. It is the SAME vat. It has been the\n"
+        "same vat since the first attack — you can see this because someone has,\n"
+        "in a moment of crew honesty, scratched a tally of every protein cycle into\n"
+        "the side. The tally is in the thousands.\n\n"
+        "The vat absorbs whatever falls in. You can tell it absorbs whatever falls\n"
+        "in because, half-submerged in the surface scum, you can see: a hex bolt.\n"
+        "A piece of regulation deck plate. A clearly-once-living rat skeleton. A\n"
+        "wristwatch. A set of dog tags belonging to a CREWMAN ENGRAM, last seen\n"
+        "three years ago.\n\n"
+        "The lasagna is the vat. The vat is the lasagna. You eat the vat. You have\n"
+        "always eaten the vat. There has never been a non-vat."
+    )
+
+
+register_room(Room(
+    id="algae_processor",
+    name="Algae Processor",
+    short_desc=(
+        "The algae processor. The vat. The truth. Crewman Engram is somewhere in there."
+    ),
+    long_desc=(
+        "A small, hot, humid maintenance bay. One vat, large and slowly turning. "
+        "Steam pipes overhead. A single warning sign: PROTEIN CYCLE — DO NOT "
+        "BREATHE THROUGH NOSE — ATTEMPT TO BREATHE THROUGH MOUTH AS LITTLE AS "
+        "POSSIBLE. The smell is — the smell is its own kind of historical record."
+    ),
+    exits={
+        "up": "env_control",
+        "out": "env_control",
+    },
+    on_enter=algae_processor_on_enter,
+    on_examine={
+        "vat": (
+            "The vat. The same vat. The tally on the side reads, by your count,\n"
+            "in the thousands. You stop counting. Counting will not help."
+        ),
+        "tally": (
+            "Scratched into the side of the vat: thousands of small vertical marks,\n"
+            "in batches of five. Above them, in different handwriting, the word\n"
+            "FORGIVE."
+        ),
+        "rat": "A rat skeleton. Mostly clean. Mostly.",
+        "skeleton": "A rat skeleton. Mostly clean. Mostly.",
+        "dog tags": (
+            "Half-submerged in the surface. The tags belong, by faint stamp, to a\n"
+            "CREWMAN ENGRAM. The rest of Engram is not, at this time, fully visible."
+        ),
+        "tags": (
+            "Half-submerged. CREWMAN ENGRAM. He was reported transferred. The transfer\n"
+            "paperwork, you suspect, was a lasagna."
+        ),
+        "sign": (
+            "PROTEIN CYCLE — DO NOT BREATHE THROUGH NOSE — ATTEMPT TO BREATHE\n"
+            "THROUGH MOUTH AS LITTLE AS POSSIBLE."
+        ),
+    },
+))
+
+
+# ─── Adama's Secret Workshop ──────────────────────────────────────────────────
+
+
+def adamas_workshop_on_enter(world):
+    if world.flags.get("entered_adamas_workshop"):
+        return None
+    world.flags["entered_adamas_workshop"] = True
+    bump_stat(world, "suspicion", 15)
+    return (
+        "The door clicks shut behind you. The room is very small. The room is very\n"
+        "private. The room is, possibly, the most damning piece of evidence on this\n"
+        "ship."
+    )
+
+
+register_room(Room(
+    id="adamas_workshop",
+    name="Adama's Secret Workshop",
+    short_desc=(
+        "A small private workshop hidden behind a panel in Adama's quarters. "
+        "Two chairs. One workbench. A bottle, a glass. A second glass."
+    ),
+    long_desc=(
+        "A small private workshop, concealed behind the panel in Adama's quarters. "
+        "Inside: a workbench. A model ship under construction — DIFFERENT from the "
+        "one on the desk, and significantly further along. Two leather chairs, very "
+        "close together, facing the bench. Between the chairs, on a low table: a "
+        "bottle of ambrosia, half-empty. Two glasses. One has lipstick on it that "
+        "is not lipstick. The other is monogrammed, in tiny gold filigree: 'SAUL.'\n\n"
+        "There is a photograph on the workbench, propped up, of two young officers "
+        "in dress uniform. Hands held below frame.\n\n"
+        "You are looking at a thirty-year affair. You are looking at it from inside.\n"
+        "You should leave. You will not leave fast enough."
+    ),
+    exits={
+        "south": "adamas_quarters",
+        "out": "adamas_quarters",
+    },
+    on_enter=adamas_workshop_on_enter,
+    on_examine={
+        "model": (
+            "The model ship. Significantly further along than the one on the desk.\n"
+            "Painstaking detail. Tiny brass railings. A pencil note pinned to it:\n"
+            "'For Saul's birthday. Don't tell him. — Bill.' The handwriting is\n"
+            "Adama's. The date is from before the war."
+        ),
+        "ship": (
+            "The model ship. The REAL one. Painstaking, decades in the making. "
+            "The mast is on correctly. The mast was on the OTHER one backwards."
+        ),
+        "workbench": "Tools laid out with care. Two pairs of reading glasses. Two.",
+        "bottle": (
+            "Ambrosia. The expensive kind. Half-empty. Two glasses out, both used,\n"
+            "one with the unmistakeable rim of someone who has been drinking and\n"
+            "crying. Both glasses are warm."
+        ),
+        "glasses": (
+            "Two glasses. One unmonogrammed, lipstick-rimmed (not lipstick). One\n"
+            "monogrammed, in gold: 'SAUL.'"
+        ),
+        "chairs": (
+            "Two leather chairs, dragged close together. The arms of the chairs\n"
+            "are scuffed in matching places, in the shape of two hands that have\n"
+            "been resting on the arms of these chairs, side by side, for a long\n"
+            "time."
+        ),
+        "photo": (
+            "The same academy photograph. Different print. This one is framed.\n"
+            "This one has been here for decades."
+        ),
+        "photograph": (
+            "The same academy photograph. Different print. This one is framed.\n"
+            "This one has been here for decades."
+        ),
+    },
+))
+
+
+# ─── Cylon-haunted Storage Bay ────────────────────────────────────────────────
+
+
+def storage_bay_on_enter(world):
+    bump_stat(world, "cylon_vibes", 10)
+    if world.flags.get("entered_storage_bay"):
+        return (
+            "You're back. The hum is the same. The four notes loop. You feel briefly,\n"
+            "embarrassingly, at home."
+        )
+    world.flags["entered_storage_bay"] = True
+    return (
+        "The ladder is short. The space at the bottom is, somehow, much larger than\n"
+        "it has any right to be — like the ship grew around something nobody put\n"
+        "on the blueprints. The hum is louder down here. The four notes loop.\n\n"
+        "You are not alone. There is, in the corner, a figure. The figure is tall.\n"
+        "The figure is blonde. The figure is in red. The figure has been waiting.\n"
+        "The figure does not move when it sees you. The figure does not need to."
+    )
+
+
+register_room(Room(
+    id="storage_bay",
+    name="Unused Storage Bay",
+    short_desc=(
+        "A storage bay that isn't on the manifest. A hum at four notes. Someone "
+        "in red, waiting."
+    ),
+    long_desc=(
+        "A storage bay. There are no crates. There are no shelves. There is no\n"
+        "manifest. There is, instead: open space. A hum at four notes that loops.\n"
+        "Soft light from a source you cannot identify. A figure in red, in the\n"
+        "corner. The figure has been here longer than you have been alive. The\n"
+        "figure has been here longer than the Galactica has been Galactica.\n\n"
+        "You are calm. You are calm in a way you have not been calm before. This\n"
+        "is, on balance, the most alarming part."
+    ),
+    exits={
+        "up": "hangar_deck",
+        "out": "hangar_deck",
+    },
+    on_enter=storage_bay_on_enter,
+    on_examine={
+        "figure": (
+            "She does not look up. She is in red. She is, somehow, the same Six\n"
+            "you saw in the corridor. She is, somehow, ALSO a different Six. You\n"
+            "stop trying to reconcile this. Reconciling will not help."
+        ),
+        "hum": "Four notes. The four notes. You know them. You've always known them.",
+        "light": "Coming from no fixture. Coming, possibly, from her.",
+        "space": (
+            "The bay is larger than the deck plates above it suggest. The math is\n"
+            "not your concern. The math is, you suspect, being suggested."
+        ),
     },
 ))
