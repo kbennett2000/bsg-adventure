@@ -1,5 +1,8 @@
+import queue
 import socket
+import threading
 from abc import ABC, abstractmethod
+from typing import Optional
 
 
 class Disconnected(Exception):
@@ -69,6 +72,82 @@ class NetIO(IO):
         if not line:
             raise Disconnected("EOF")
         return line.decode("utf-8", errors="replace").rstrip("\r\n").rstrip()
+
+
+class WebIO(IO):
+    """Queue-backed IO for browser sessions over SSE + POST.
+
+    The Session loop runs in its own thread and uses this IO exactly as if
+    it were a local terminal. Output `send()`s go onto `_send_q`, which is
+    drained by the SSE writer thread and pushed to the browser as
+    Server-Sent Event chunks. Input `receive()` blocks on `_recv_q`, which
+    POST /input handlers push lines onto.
+
+    Disconnection is one-way: when the browser closes or the session is
+    GC'd by the idle reaper, `close()` is called. Any in-flight `receive()`
+    wakes up within `_POLL_INTERVAL` seconds and raises Disconnected so the
+    session loop can autosave and exit cleanly."""
+
+    _POLL_INTERVAL = 1.0  # seconds; how often receive() rechecks the closed flag
+
+    def __init__(self) -> None:
+        self._send_q: queue.Queue[str] = queue.Queue()
+        self._recv_q: queue.Queue[str] = queue.Queue()
+        self._closed = threading.Event()
+
+    def send(self, text: str) -> None:
+        # Even after close, accept sends silently (the SSE drain may have
+        # already torn down; we don't want a late epitaph crash to kill the
+        # session's finalize path).
+        if self._closed.is_set():
+            return
+        self._send_q.put(text)
+
+    def receive(self, prompt: str = "> ") -> str:
+        if prompt:
+            self.send(prompt)
+        while True:
+            if self._closed.is_set():
+                raise Disconnected("WebIO closed")
+            try:
+                line = self._recv_q.get(timeout=self._POLL_INTERVAL)
+            except queue.Empty:
+                continue
+            # A None sentinel (pushed by close()) also signals disconnection.
+            if line is None:
+                raise Disconnected("WebIO closed")
+            return line
+
+    def push_input(self, line: str) -> None:
+        """Called by the HTTP POST /input handler when the browser submits
+        a line of input."""
+        if self._closed.is_set():
+            return
+        self._recv_q.put(line)
+
+    def drain_send(self, timeout: float) -> Optional[str]:
+        """Called by the SSE writer to pull the next text chunk to push to
+        the browser. Returns None on timeout (so the writer can send a
+        keepalive comment) or when the IO has been closed."""
+        try:
+            return self._send_q.get(timeout=timeout)
+        except queue.Empty:
+            return None
+
+    def close(self) -> None:
+        """Signal the session that the connection is gone. Idempotent."""
+        if self._closed.is_set():
+            return
+        self._closed.set()
+        # Unblock any pending receive() immediately.
+        try:
+            self._recv_q.put_nowait(None)
+        except queue.Full:
+            pass
+
+    @property
+    def closed(self) -> bool:
+        return self._closed.is_set()
 
 
 class ScriptedIO(IO):

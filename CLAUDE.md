@@ -48,12 +48,18 @@ bsg-adventure/
 │   ├── world.py               # WorldState: current room, inventory, flags, turn count
 │   ├── commands.py            # verb handlers (go, look, take, …); dispatch table
 │   ├── loop.py                # per-session game loop; prompt → parse → dispatch → render
-│   ├── io.py                  # IO abstraction; LocalIO (stdin/stdout) + NetIO (asyncio streams)
-│   ├── server.py              # asyncio TCP server; accept loop, session spawn
+│   ├── io.py                  # IO abstraction; LocalIO + NetIO (TCP) + WebIO (browser) + ScriptedIO (tests)
+│   ├── server.py              # ThreadingTCPServer for telnet/nc clients
+│   ├── webserver.py           # ThreadingHTTPServer + SSE/POST routes for the browser client
+│   ├── name_registry.py       # shared player-name claim across TCP + HTTP listeners
 │   ├── session.py             # per-connection: identity, WorldState, IO, lifecycle
 │   ├── save.py                # serialize/deserialize WorldState to JSON; atomic writes
 │   ├── events.py              # turn-based event hooks (e.g., Tigh wanders by on T+5)
 │   └── registry.py            # content registers rooms/npcs/items/verbs here
+├── web/                       # browser client (served by engine/webserver.py)
+│   ├── index.html             # single-page terminal UI; references only /style.css /app.js
+│   ├── style.css              # green-on-black CRT theme; no external fonts or imports
+│   └── app.js                 # vanilla JS: EventSource for output, fetch POST for input
 ├── content/
 │   ├── __init__.py            # bulk-imports the modules below so registration fires
 │   ├── rooms.py               # all 13 room definitions
@@ -146,15 +152,25 @@ people connected at the same time are each playing their own copy of the story.
 
 ### Transport
 
-- **Asyncio TCP server**, line-oriented text protocol. Default bind: `0.0.0.0:4404`,
-  configurable via `BSG_BIND_ADDR` / `BSG_PORT`.
-- Clients connect with anything that speaks raw TCP — `nc <host> 4404`, `telnet`, or
-  a tiny dedicated client we ship later. No custom protocol on top of the existing
-  parser prompt/response cycle; the network framing is just "send line, receive
-  lines until next prompt."
-- **LAN only.** Document that the host should bind to a LAN address and not be
-  port-forwarded. No auth, no TLS — explicitly out of scope. If the user ever
-  wants internet exposure, that is a different project.
+Two listeners run side-by-side in the same `--serve` process. Both are
+thread-per-connection (`socketserver.ThreadingTCPServer` and
+`http.server.ThreadingHTTPServer`); they share one `NameRegistry` so name
+claims are unique across transports. The original spec called for
+asyncio; we landed on threading because the workload is purely IO-bound,
+the implementation is much shorter, and the engine code stays synchronous.
+
+- **TCP listener** — line-oriented text protocol on `0.0.0.0:4404`
+  (configurable via `BSG_BIND_ADDR` / `BSG_PORT` or `--bind` / `--port`).
+  Clients: `nc <host> 4404`, `telnet`, anything that speaks raw TCP.
+- **HTTP listener** — single-page browser client on `0.0.0.0:4405`
+  (configurable via `BSG_WEB_BIND_ADDR` / `BSG_WEB_PORT` or `--web-bind` /
+  `--web-port`). The browser opens an `EventSource` against `/events?
+  session=<id>` for server→browser push and POSTs lines to `/input?
+  session=<id>`. Static assets (HTML/CSS/JS) live in `web/` and are
+  served from the local filesystem — no CDN, no external fonts.
+- Either listener can be disabled with `--no-tcp` / `--no-web`.
+- **LAN only.** Both listeners share the same security stance: no auth,
+  no TLS. Bind to a LAN interface, do not port-forward.
 
 ### Sessions
 
@@ -175,26 +191,30 @@ people connected at the same time are each playing their own copy of the story.
 ### IO abstraction
 
 Engine code MUST NOT call `print()` or `input()` directly. All IO goes through an
-`IO` interface (`engine/io.py`) with `send(text)` and `receive() -> str`. There are
-two implementations:
+`IO` interface (`engine/io.py`) with `send(text)` and `receive(prompt) -> str`.
+There are four implementations:
 
-- **LocalIO** — wraps stdin/stdout. Used by `main.py --local` for development.
-- **NetIO** — wraps an asyncio `StreamReader`/`StreamWriter` pair. Used by the
-  server for each connection.
+- **LocalIO** — wraps stdin/stdout. Used by `main.py` (no `--serve`) for solo play.
+- **NetIO** — wraps a socketserver `rfile`/`wfile` pair for the TCP listener.
+- **WebIO** — queue-backed; output goes onto a Queue that the SSE writer
+  thread drains; input comes from a Queue that the POST `/input` handler
+  pushes onto. Raises `Disconnected` when the session is closed.
+- **ScriptedIO** — feeds canned input and records output. Used by tests.
 
-This is the seam that keeps the parser/loop/commands network-agnostic. Get this
-right early; retrofitting later is painful.
+This is the seam that keeps the parser/loop/commands network-agnostic. Adding a
+new transport means writing one IO subclass; the engine doesn't change.
 
 ### Concurrency model
 
-- One asyncio task per session. The session loop is `async`; verb handlers stay
-  synchronous and pure with respect to their `WorldState` (they receive a
-  WorldState, mutate it, return text).
+- One OS thread per session, regardless of transport. TCP gets a thread per
+  accepted connection from `ThreadingTCPServer`; the browser path spawns a
+  game thread at `/spawn` time and a separate SSE-writer thread per
+  `/events` request.
 - There is **no shared mutable state across sessions**. Each session owns its
   own WorldState. The content definitions (rooms, npcs, items) are read-only and
-  shared safely.
-- Save writes are serialized per-player (a simple per-player `asyncio.Lock` in the
-  session) so autosave and an explicit `save` cannot race.
+  shared safely between threads (set up at import time, never mutated).
+- The shared `NameRegistry` enforces one-session-per-name and the global
+  max-sessions cap across both transports.
 
 ### Operational notes
 

@@ -156,48 +156,152 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=int(os.environ.get("BSG_IDLE_TIMEOUT", "1800")),
         help="Per-connection idle timeout in seconds (server mode). Default 1800. Env: BSG_IDLE_TIMEOUT.",
     )
+    p.add_argument(
+        "--web-port",
+        type=int,
+        default=int(os.environ.get("BSG_WEB_PORT", "4405")),
+        help="HTTP port for the in-browser client (server mode). Default 4405. Env: BSG_WEB_PORT.",
+    )
+    p.add_argument(
+        "--web-bind",
+        default=os.environ.get("BSG_WEB_BIND_ADDR", "0.0.0.0"),
+        help="Address the HTTP listener binds to (server mode). Default 0.0.0.0. Env: BSG_WEB_BIND_ADDR.",
+    )
+    p.add_argument(
+        "--no-tcp",
+        action="store_true",
+        help="Disable the TCP listener; serve only the browser client.",
+    )
+    p.add_argument(
+        "--no-web",
+        action="store_true",
+        help="Disable the HTTP/browser listener; serve only TCP.",
+    )
     return p.parse_args(argv)
 
 
-def run_local() -> int:
-    io = LocalIO()
-    try:
-        show_title(io)
-        name = prompt_for_name(io)
-    except Disconnected:
-        return 0
-    io.send(f"\nINTERCOM: ACKNOWLEDGED, SPECIALIST {name.upper()}. WELCOME TO ANOTHER FRAKKIN' SHIFT.\n")
+_NG_PLUS_BANNER = (
+    "── ALL OF THIS HAS HAPPENED BEFORE ──\n\n"
+    "You wake up. Again. The intercom is the same. The bunk is the same.\n"
+    "Hadrian is the same. The dent without a story is, you swear, in a\n"
+    "different place than you remembered. You shake it off. Mostly."
+)
 
+
+def run_ng_plus_loop(io, name: str, log_fn=None) -> None:
+    """Per-player game loop: build a world, run a session, on NG+ accept
+    rebuild and rerun. Used by every transport (local, TCP, web)."""
     ng_plus_context: dict | None = None
     while True:
         if ng_plus_context and ng_plus_context.get("ng_plus"):
             io.send("")
-            io.send(
-                "── ALL OF THIS HAS HAPPENED BEFORE ──\n\n"
-                "You wake up. Again. The intercom is the same. The bunk is the same.\n"
-                "Hadrian is the same. The dent without a story is, you swear, in a\n"
-                "different place than you remembered. You shake it off. Mostly."
-            )
+            io.send(_NG_PLUS_BANNER)
             io.send("")
         world = build_world(name, ng_plus_context)
-        session = Session(io=io, world=world)
+        kwargs = {"io": io, "world": world}
+        if log_fn is not None:
+            kwargs["log_fn"] = log_fn
+        session = Session(**kwargs)
         next_action = session.run()
         if not next_action or not next_action.get("ng_plus"):
-            return 0
+            return
         ng_plus_context = next_action
+
+
+def play_one_player(io, name_registry=None, log_fn=None) -> None:
+    """Full single-player playthrough: title → name prompt → optional name
+    claim → INTERCOM ack → NG+ loop. Used by both run_local() (no registry)
+    and the web server (with a shared registry). The TCP server inlines a
+    near-identical version because its name-claim-on-refusal path needs to
+    log peer info; the shared path here would otherwise duplicate it."""
+    try:
+        show_title(io)
+        name = prompt_for_name(io)
+    except Disconnected:
+        return
+    if name_registry is not None:
+        if not name_registry.claim(name):
+            io.send(name_registry.refusal_message(name))
+            return
+    try:
+        io.send(
+            f"\nINTERCOM: ACKNOWLEDGED, SPECIALIST {name.upper()}. "
+            "WELCOME TO ANOTHER FRAKKIN' SHIFT.\n"
+        )
+        run_ng_plus_loop(io, name, log_fn=log_fn)
+    finally:
+        if name_registry is not None:
+            name_registry.release(name)
+
+
+def run_local() -> int:
+    play_one_player(LocalIO())
+    return 0
+
+
+def _serve_dual(args) -> int:
+    """Run the TCP and HTTP listeners simultaneously (one process). Both
+    share a single NameRegistry so a player name is unique across both
+    transports. Either listener can be disabled via --no-tcp / --no-web;
+    refusing both is rejected."""
+    import threading
+
+    from engine.name_registry import NameRegistry
+
+    if args.no_tcp and args.no_web:
+        print("--no-tcp and --no-web together leaves nothing to serve.", file=sys.stderr)
+        return 2
+
+    registry = NameRegistry(args.max_sessions)
+    log_fn = lambda msg: print(msg, flush=True)
+
+    threads: list[threading.Thread] = []
+
+    if not args.no_tcp:
+        from engine.server import serve_forever as serve_tcp
+
+        def _tcp() -> None:
+            serve_tcp(
+                bind_addr=args.bind,
+                port=args.port,
+                max_sessions=args.max_sessions,
+                idle_timeout=args.idle_timeout,
+                log_fn=log_fn,
+                name_registry=registry,
+            )
+        t = threading.Thread(target=_tcp, name="bsg-tcp", daemon=True)
+        t.start()
+        threads.append(t)
+
+    if not args.no_web:
+        from engine.webserver import serve_forever as serve_web
+
+        def _web() -> None:
+            serve_web(
+                bind_addr=args.web_bind,
+                port=args.web_port,
+                idle_timeout=args.idle_timeout,
+                log_fn=log_fn,
+                name_registry=registry,
+                max_sessions=args.max_sessions,
+            )
+        t = threading.Thread(target=_web, name="bsg-web", daemon=True)
+        t.start()
+        threads.append(t)
+
+    # Block on the daemon threads. KeyboardInterrupt unwinds cleanly.
+    try:
+        for t in threads:
+            t.join()
+    except KeyboardInterrupt:
+        print("\nShutting down.", flush=True)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.serve:
-        from engine.server import serve_forever
-        serve_forever(
-            bind_addr=args.bind,
-            port=args.port,
-            max_sessions=args.max_sessions,
-            idle_timeout=args.idle_timeout,
-        )
-        return 0
+        return _serve_dual(args)
     return run_local()
 
 

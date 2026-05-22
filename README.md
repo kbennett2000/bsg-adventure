@@ -61,9 +61,11 @@ future format migrations.
 
 ### Multi-session over LAN
 
-The host machine runs a TCP server; anyone on the same network connects
-from their own terminal and plays their own independent session. No
-internet exposure, no auth — LAN only.
+The host machine runs the server; anyone on the same network can connect
+either from their own terminal (TCP) or from a web browser (HTTP). Both
+listeners run in the same process and share the player-name registry —
+the game is otherwise identical. No internet exposure, no auth, no TLS —
+**LAN only**.
 
 **Start the server:**
 
@@ -71,20 +73,27 @@ internet exposure, no auth — LAN only.
 python3 main.py --serve
 ```
 
-Defaults: binds to `0.0.0.0:4404`, allows up to 8 concurrent sessions,
-30-minute idle timeout. Override via flags or env vars:
+Defaults: TCP on `0.0.0.0:4404`, HTTP on `0.0.0.0:4405`, up to 8 concurrent
+sessions across both transports combined, 30-minute idle timeout. Override
+via flags or env vars:
 
 ```bash
-BSG_PORT=4404 BSG_MAX_SESSIONS=12 python3 main.py --serve
+BSG_PORT=4404 BSG_WEB_PORT=4405 BSG_MAX_SESSIONS=12 python3 main.py --serve
 ```
 
 Or:
 
 ```bash
-python3 main.py --serve --bind 192.168.1.10 --port 4404 --max-sessions 12
+python3 main.py --serve \
+  --bind 192.168.1.10 --port 4404 \
+  --web-bind 192.168.1.10 --web-port 4405 \
+  --max-sessions 12
 ```
 
-**Connect from another terminal on the LAN:**
+Pass `--no-tcp` or `--no-web` to disable either listener (running both
+together is the default, but you don't have to).
+
+**Connect from a terminal on the LAN:**
 
 ```bash
 nc <host-ip> 4404            # most common
@@ -92,14 +101,28 @@ ncat <host-ip> 4404
 telnet <host-ip> 4404        # also works; CRLF line endings are handled
 ```
 
+**Connect from a browser on the LAN:**
+
+Open `http://<host-ip>:4405/` in any modern browser (Firefox, Chromium,
+Safari, anything from the last decade). The page is a green-on-black
+terminal that mirrors the TCP experience exactly. Server-Sent Events
+push output; POSTs submit commands; tab close hangs up the session
+cleanly via `sendBeacon`.
+
+The browser client is 100% offline — no external scripts, no webfonts,
+no telemetry, no CDN. Everything in `web/` is served by the local host.
+
 **Policies:**
 
-- One session per player name. A second connection using the same name
-  gets a polite refusal and disconnects.
+- One session per player name across BOTH transports. If you're connected
+  via telnet as "Kara", a browser tab also trying "Kara" gets the in-
+  character refusal and disconnects (and vice versa).
 - Player names sanitized to `[A-Za-z0-9_]{1,32}` before they touch the
   filesystem.
-- 30-minute idle timeout. The session autosaves on the way out, so a
-  timed-out player loses at most ~10 turns of progress.
+- 30-minute idle timeout on TCP; 30-minute idle plus a 60-second grace
+  period after browser disconnect on HTTP (so a tab refresh can reattach).
+- The session autosaves on the way out, so a timed-out player loses at
+  most ~10 turns of progress.
 - Reconnecting with the same name auto-resumes from `auto.json`.
 
 **Operational notes:**

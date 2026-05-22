@@ -17,6 +17,8 @@ import socketserver
 import threading
 from typing import Optional
 
+from .name_registry import NameRegistry
+
 
 DEFAULT_PORT = 4404
 DEFAULT_MAX_SESSIONS = 8
@@ -100,7 +102,12 @@ class BSGRequestHandler(socketserver.StreamRequestHandler):
 
 
 class BSGServer(socketserver.ThreadingTCPServer):
-    """ThreadingTCPServer with a name-claim registry and configurable caps."""
+    """ThreadingTCPServer with a name-claim registry and configurable caps.
+
+    The name registry can be SHARED with another listener (e.g. the HTTP
+    server) by passing an existing NameRegistry into the constructor. This
+    keeps the TCP-vs-browser name-collision semantics correct when one
+    process runs both transports."""
 
     allow_reuse_address = True
     daemon_threads = True
@@ -111,54 +118,31 @@ class BSGServer(socketserver.ThreadingTCPServer):
         max_sessions: int = DEFAULT_MAX_SESSIONS,
         idle_timeout: int = DEFAULT_IDLE_TIMEOUT_SECONDS,
         log_fn=None,
+        name_registry: Optional[NameRegistry] = None,
     ) -> None:
         # Class-level timeout on the handler. Mutating this is the documented
         # way to set it; the handler reads it in setup().
         BSGRequestHandler.timeout = idle_timeout
         super().__init__(server_address, BSGRequestHandler)
         self.max_sessions = max_sessions
-        self._active_names: set[str] = set()
-        self._lock = threading.Lock()
+        self._registry = name_registry or NameRegistry(max_sessions)
         self._log_fn = log_fn or (lambda msg: print(msg, flush=True))
 
     def log(self, msg: str) -> None:
         self._log_fn(msg)
 
     def claim_name(self, name: str) -> bool:
-        with self._lock:
-            if name in self._active_names:
-                return False
-            if len(self._active_names) >= self.max_sessions:
-                return False
-            self._active_names.add(name)
-            return True
+        return self._registry.claim(name)
 
     def release_name(self, name: str) -> None:
-        with self._lock:
-            self._active_names.discard(name)
+        self._registry.release(name)
 
     def refusal_message(self, name: str) -> str:
-        with self._lock:
-            full = len(self._active_names) >= self.max_sessions
-            already = name in self._active_names
-        if already:
-            return (
-                f"\nThere's already a Specialist {name} aboard, specialist.\n"
-                "The duty roster is many things, but it is not a frakkin' "
-                "polygamist. Find another terminal."
-            )
-        if full:
-            return (
-                "\nThe frakkin' ship is full, specialist. Eight already aboard.\n"
-                "Come back when one of them gets spaced. Statistically this won't\n"
-                "be long."
-            )
-        return "\nConnection refused. Try again, specialist."
+        return self._registry.refusal_message(name)
 
     @property
     def active_count(self) -> int:
-        with self._lock:
-            return len(self._active_names)
+        return self._registry.active_count
 
 
 def serve_forever(
@@ -167,8 +151,9 @@ def serve_forever(
     max_sessions: int = DEFAULT_MAX_SESSIONS,
     idle_timeout: int = DEFAULT_IDLE_TIMEOUT_SECONDS,
     log_fn=None,
+    name_registry: Optional[NameRegistry] = None,
 ) -> None:
-    """Block forever serving the BSG Adventure LAN server.
+    """Block forever serving the BSG Adventure LAN TCP server.
 
     Imports content eagerly so the first connection doesn't pay the registration
     cost (and so two simultaneous early connections can't race the import lock)."""
@@ -179,9 +164,10 @@ def serve_forever(
         max_sessions=max_sessions,
         idle_timeout=idle_timeout,
         log_fn=log_fn,
+        name_registry=name_registry,
     )
     server.log(
-        f"BSG Adventure listening on {bind_addr}:{port} "
+        f"BSG Adventure (TCP) listening on {bind_addr}:{port} "
         f"(max {max_sessions} sessions, idle timeout {idle_timeout}s)"
     )
     try:

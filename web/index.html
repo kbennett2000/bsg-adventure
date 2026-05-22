@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>BSG Adventure</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main id="crt">
+  <div id="scanlines" aria-hidden="true"></div>
+  <pre id="output" aria-live="polite" aria-atomic="false"></pre>
+  <form id="form" autocomplete="off" spellcheck="false">
+    <span id="prompt-glyph">&gt;</span>
+    <input
+      id="input"
+      type="text"
+      autocomplete="off"
+      autocorrect="off"
+      autocapitalize="off"
+      spellcheck="false"
+      maxlength="2048"
+      aria-label="Type a command, specialist."
+    >
+  </form>
+  <div id="status" role="status"></div>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,140 @@
+/* BSG Adventure — green-on-black CRT terminal.
+   100% offline. No webfont fetches, no external assets. */
+
+:root {
+  --bg: #050a05;
+  --fg: #4cff66;
+  --fg-dim: #2a9c3a;
+  --fg-glow: rgba(76, 255, 102, 0.55);
+  --scanline: rgba(0, 0, 0, 0.25);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-monospace, "Cascadia Mono", "JetBrains Mono", "Fira Code",
+               Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  font-size: 14px;
+  line-height: 1.35;
+  overflow: hidden;
+}
+
+/* The whole screen is the CRT. */
+#crt {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 28px 14px 28px;
+  text-shadow: 0 0 4px var(--fg-glow);
+  overflow: hidden;
+  /* Faint inset vignette for a CRT-bevel feel. */
+  box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.85);
+}
+
+/* Scanline overlay — fixed translucent stripes drawn over the text. */
+#scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--scanline) 0,
+    var(--scanline) 1px,
+    transparent 2px,
+    transparent 3px
+  );
+  z-index: 2;
+  opacity: 0.45;
+  /* Very subtle horizontal drift for a tube-warmup feel. */
+  animation: scanline-drift 6s linear infinite;
+}
+
+@keyframes scanline-drift {
+  0%   { background-position: 0 0; }
+  100% { background-position: 0 3px; }
+}
+
+#output {
+  flex: 1 1 auto;
+  margin: 0 0 8px 0;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: var(--fg);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-y: auto;
+  scrollbar-color: var(--fg-dim) transparent;
+  scrollbar-width: thin;
+  position: relative;
+  z-index: 1;
+}
+
+#output::-webkit-scrollbar { width: 8px; }
+#output::-webkit-scrollbar-thumb { background: var(--fg-dim); }
+#output::-webkit-scrollbar-track { background: transparent; }
+
+#form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid var(--fg-dim);
+  padding-top: 6px;
+  position: relative;
+  z-index: 1;
+}
+
+#prompt-glyph {
+  color: var(--fg);
+  user-select: none;
+}
+
+#input {
+  flex: 1 1 auto;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  caret-color: var(--fg);
+  text-shadow: 0 0 4px var(--fg-glow);
+}
+
+#input::placeholder { color: var(--fg-dim); }
+
+/* Blink the caret if the field is empty. */
+#input:focus { outline: none; }
+
+#status {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--fg-dim);
+  min-height: 1.2em;
+  position: relative;
+  z-index: 1;
+}
+
+/* Echoed lines (what the player typed) get a dimmer hue so they're
+   distinguishable from server output without losing the monochrome feel. */
+.echo {
+  color: var(--fg-dim);
+}
+
+/* Mobile: tighten the padding so on-screen keyboards leave room. */
+@media (max-width: 640px) {
+  #crt { padding: 12px 14px 8px 14px; }
+  html, body { font-size: 13px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #scanlines { animation: none; }
+}
