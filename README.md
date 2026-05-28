@@ -20,6 +20,11 @@
                        A   D   V   E   N   T   U   R   E
 ```
 
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+![Zero dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
+![Standard library only](https://img.shields.io/badge/stdlib-only-informational)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+
 A terminal-based parser text adventure. Parody of *Battlestar Galactica* (2004
 reboot) from the POV of a Specialist 3rd Class assigned to environmental systems.
 
@@ -306,3 +311,13 @@ that number for the current ground truth rather than a stale figure here.
 ## Known bugs
 
 So say we all.
+
+---
+
+## Legal
+
+**Unofficial fan parody.** BSG Adventure is a non-commercial fan work. It is
+not affiliated with, endorsed by, or sponsored by Universal/NBCUniversal.
+*Battlestar Galactica*, its characters, and related marks are the property of
+their respective owners. The original engine and game code in this repository
+are released under the MIT License — see [LICENSE](LICENSE).
